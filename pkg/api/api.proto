@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+option go_package="pkg/api";
+
+package device_mount;
+
+service DeviceMountService {
+  rpc MountDevice (MountDeviceRequest) returns (DeviceResponse) {};
+  rpc UnMountDevice (UnMountDeviceRequest) returns (DeviceResponse) {};
+}
+
+message Container {
+  uint32 index = 1;
+  string name  = 2;
+}
+
+message MountDeviceRequest {
+  string              pod_name        = 1;
+  string              pod_namespace   = 2;
+  Container           container       = 3;
+  map<string, string> resources       = 4;
+  map<string, string> annotations     = 5;
+  string              device_type     = 6;
+  bool                is_entire_mount = 7;
+  uint32              timeout_seconds = 8;
+}
+
+enum ResultCode {
+  Success              = 0;
+  Fail                 = 1;
+  Insufficient         = 2;
+  NotFound             = 3;
+  DeviceBusy           = 4;
+  Invalid              = 5;
+  Unknown              = 99;
+}
+
+message UnMountDeviceRequest {
+  string      pod_name          = 1;
+  string      pod_namespace     = 2;
+  Container   container         = 3;
+  string      device_type       = 4;
+  bool        force             = 5;
+}
+
+message DeviceResponse {
+  ResultCode result  = 1;
+  string     message = 2;
+}
