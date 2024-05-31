@@ -469,17 +469,10 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 			Message: fmt.Sprintf("Failed to unmount device information after: %v", err),
 		}, nil
 	}
-
 	// 回收slave pod
-	slavePodKeys := make([]types.NamespacedName, len(slavePods))
-	for i, slavePod := range slavePods {
-		slavePodKeys[i] = types.NamespacedName{
-			Name:      slavePod.Name,
-			Namespace: slavePod.Namespace,
-		}
-	}
-	// TODO 暂时忽略删除失败 （资源泄漏风险）
-	_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+	recyclingPodkeys := deviceMounter.RecycledPodResources(kubeClient, pod, container, slavePods)
+	// TODO 暂时忽略删除失败 （有资源泄漏风险）
+	_ = RecyclingPods(ctx, s.KubeClient, recyclingPodkeys)
 	// 卸载成功发送event
 	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", fmt.Sprintf("Successfully uninstalled %s device", req.GetDeviceType()))
 	klog.Infoln("UnMountDevice Successfully")

@@ -114,11 +114,7 @@ type sharedRegionT struct {
 	priority          int32
 }
 
-func MunmapVGPUCacheConfig(data []byte) error {
-	return syscall.Munmap(data)
-}
-
-func MmapVGPUCacheConfig(filePath string) (*sharedRegionT, []byte, error) {
+func mmapVGPUCacheConfig(filePath string) (*sharedRegionT, []byte, error) {
 	files, err := ioutil.ReadDir(filePath)
 	if err != nil {
 		return nil, nil, err
@@ -165,7 +161,7 @@ func mmapVGPUCacheFile(filePath string) (*sharedRegionT, []byte, error) {
 	}
 	// 安全地将映射的内存转换为sharedRegionT的指针
 	cachestr := (*sharedRegionT)(unsafe.Pointer(&data[0]))
-	klog.V(4).Info("mmap file sizeof:", size, " cachestr.utilizationSwitch:", cachestr.utilizationSwitch, " cachestr.recentKernel:", cachestr.recentKernel)
+	klog.V(4).Infoln("mmap file sizeof:", size, "cachestr.num:", cachestr.num, "cachestr.utilizationSwitch:", cachestr.utilizationSwitch, "cachestr.recentKernel:", cachestr.recentKernel)
 	return cachestr, data, nil
 }
 
@@ -292,14 +288,21 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
-func MutationCacheFunc(cacheFile string, mutaFunc func(*sharedRegionT) error) error {
+func MutationCacheFunc(cacheFile string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
-	cacheConfig, data, err := MmapVGPUCacheConfig(cacheFile)
+	cacheConfig, data, err := mmapVGPUCacheConfig(cacheFile)
 	if err != nil {
 		return err
 	}
-	defer MunmapVGPUCacheConfig(data)
-	return mutaFunc(cacheConfig)
+	defer func() {
+		if data != nil {
+			err = syscall.Munmap(data)
+		}
+		if err != nil {
+			klog.Errorf("Munmap file % failed: %v", cacheFile, err)
+		}
+	}()
+	return mutationFunc(cacheConfig)
 }
 
 func ConvertUUID(devuuid string) uuid {

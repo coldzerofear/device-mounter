@@ -14,6 +14,7 @@ import (
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -419,7 +420,7 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 		tmpSlavePods = append(tmpSlavePods, slavePods[i])
 	}
 	cacheFile := GetVGPUCacheFileDir(ownerPod, container)
-	if _, err := os.Stat(cacheFile); err == nil {
+	if _, err := os.Stat(cacheFile); err == nil && len(tmpSlavePods) > 0 {
 		// vgpu缓存存在，从缓存中剔除设备
 		devMap := map[string]Device{}
 		for _, slavePod := range tmpSlavePods {
@@ -430,8 +431,7 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 			}
 		}
 		_ = MutationCacheFunc(cacheFile, func(cache *sharedRegionT) error {
-			length := cache.num
-			for i := length - 1; i >= 0; i-- {
+			for i := int64(cache.num) - 1; i >= 0; i-- {
 				devuuid := string(cache.uuids[i].uuid[:])[0:40]
 				if _, ok := devMap[devuuid]; ok {
 					cache.limit[i] = 0
@@ -455,4 +455,18 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 		}
 	}
 	return nil
+}
+
+func (m *VolcanoVGPUMounter) RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+	slavePodKeys := make([]types.NamespacedName, 0)
+	for _, slavePod := range slavePods {
+		if config.AnnoIsExpansion(slavePod.Annotations) {
+			continue // 跳过用于扩容的pod
+		}
+		slavePodKeys = append(slavePodKeys, types.NamespacedName{
+			Name:      slavePod.Name,
+			Namespace: slavePod.Namespace,
+		})
+	}
+	return slavePodKeys
 }

@@ -9,6 +9,7 @@ import (
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -232,4 +233,15 @@ func (m *NvidiaGPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 // 卸载设备成功前的后续动作
 func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
+}
+
+func (m *NvidiaGPUMounter) RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+	slavePodKeys := make([]types.NamespacedName, len(slavePods))
+	for i, slavePod := range slavePods {
+		slavePodKeys[i] = types.NamespacedName{
+			Name:      slavePod.Name,
+			Namespace: slavePod.Namespace,
+		}
+	}
+	return slavePodKeys
 }
