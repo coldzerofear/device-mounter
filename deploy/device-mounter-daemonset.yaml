@@ -123,6 +123,13 @@ spec:
               mountPath: /usr/local/vgpu
             - name: mounter
               mountPath: /var/run/k8s-device-mounter
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
       volumes:
         - name: cgroup
           hostPath:

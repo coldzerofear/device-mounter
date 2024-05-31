@@ -52,7 +52,7 @@ func (m *VolcanoVGPUMounter) CheckDeviceEnvironment() bool {
 
 // 校验挂载资源时的 请求参数 和 节点资源
 func (m *VolcanoVGPUMounter) CheckMountResources(
-	kubeClient *kubernetes.Clientset,
+	_ *kubernetes.Clientset,
 	node *v1.Node,
 	ownerPod *v1.Pod,
 	container *api.Container,
@@ -70,9 +70,9 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 	}
 
 	expansion := config.AnnoIsExpansion(annotations)
-
-	if str, ok := ownerPod.Annotations[AssignedIDsAnnotations]; ok && expansion {
-		podDevices := decodePodDevices(str)
+	devStr, ok := ownerPod.Annotations[AssignedIDsAnnotations]
+	if ok && expansion {
+		podDevices := decodePodDevices(devStr)
 		usedUUID := sets.NewString()
 		for _, devices := range podDevices {
 			for _, device := range devices {
@@ -87,10 +87,12 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 		}
 	} else if expansion {
 		return api.ResultCode_Fail, "The target container does not have vgpu resources and cannot be expanded", false
-	} else {
-		if !HasVGPU(ownerPod, container) {
-			return api.ResultCode_Fail, "The target pod has not applied for a vgpu and cannot be mounted", false
-		}
+	}
+
+	nameStr := ownerPod.Annotations[InitVGPUAnnotations]
+	ctrNames := strings.Split(strings.TrimSpace(nameStr), ",")
+	if util.ContainsString(ctrNames, container.Name) {
+		return api.ResultCode_Fail, "The target container has initialized the vgpu and cannot be mounted again", false
 	}
 
 	return api.ResultCode_Success, "", true
@@ -230,19 +232,16 @@ func (m *VolcanoVGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPo
 	return deviceInfos, nil
 }
 
-func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
+func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
 	for _, slavePod := range slavePods {
 		devMap := GetPodDevMap(slavePod)
+		klog.Infoln("slave", slavePod.Name, "devices ", devMap)
 		if config.AnnoIsExpansion(slavePod.Annotations) {
 			// 扩容设备的操作
-			klog.Infoln("slave", slavePod.Name, "devices ", devMap)
 			// 默认调用一次命令，保证vgpu拦截库生成缓存
-			_, _, err := client.ExecCmdToPod(kubeClient, ownerPod, container, []string{"nvidia-smi"})
-			if err != nil {
-				// 这里先忽略失败
-				klog.Errorln(err)
-			}
-			if err = MutationCacheFunc(ownerPod, container, func(cache *sharedRegionT) error {
+			_ = execNvidiaSMI(kubeClient, ownerPod, container)
+			cacheFile := GetVGPUCacheFileDir(ownerPod, container)
+			if err := MutationCacheFunc(cacheFile, func(cache *sharedRegionT) error {
 				for i := uint64(0); i < cache.num; i++ {
 					devuuid := string(cache.uuids[i].uuid[:])[0:40]
 					if dev, ok := devMap[devuuid]; ok {
@@ -264,13 +263,11 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 
 			// owner pod 有vgpu资源
 			if HasVGPU(ownerPod, container) || err == nil {
+				klog.Infoln("Attach new vgpu devices to the vgpu container")
 				// 默认调用一次命令，保证vgpu拦截库生成缓存
-				_, _, err := client.ExecCmdToPod(kubeClient, ownerPod, container, []string{"nvidia-smi"})
-				if err != nil {
-					// 这里先忽略失败
-					klog.Errorln(err)
-				}
-				if err = MutationCacheFunc(ownerPod, container, func(cache *sharedRegionT) error {
+				_ = execNvidiaSMI(kubeClient, ownerPod, container)
+				cacheFile := GetVGPUCacheFileDir(ownerPod, container)
+				if err = MutationCacheFunc(cacheFile, func(cache *sharedRegionT) error {
 					for devuuid, dev := range devMap {
 						tail := cache.num
 						cores := uint64(dev.Usedcores)
@@ -286,7 +283,13 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 					return err
 				}
 			} else {
+				klog.Infoln("Attach new vgpu devices to the ordinary container")
 				// owner pod 无vgpu资源
+
+				// 校验nvidia-smi命令行文件
+				//if _, err := os.Stat(NVIDIA_SMI_FILE_PATH); err != nil {
+				//	return fmt.Errorf("Failed to detect file [%s]: %v", NVIDIA_SMI_FILE_PATH, err)
+				//}
 
 				// 校验vgpu库文件
 				if _, err := os.Stat(VGPU_LIBFILE_PATH); err != nil {
@@ -295,25 +298,63 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 				if _, err := os.Stat(VGPU_PRELOAD_PATH); err != nil {
 					return fmt.Errorf("Failed to detect file [%s]: %v", VGPU_PRELOAD_PATH, err)
 				}
+				// TODO 删除默认位置的vgpu缓存，防止挂载后 卸载 再挂载 失败
+				_, _, _ = cfg.Execute("sh", "-c", "rm -f /tmp/cudevshr.cache")
+
+				cmd := []string{"mkdir -p /etc /usr/bin /tmp/vgpu " + VGPU_DIR_PATH}
+				_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+				if err != nil {
+					// 这里先忽略失败
+					klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+					cmd = []string{"sh", "-c", "mkdir -p /etc /usr/bin /tmp/vgpu " + VGPU_DIR_PATH}
+					_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+				}
+				if err != nil {
+					klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+					cmd = []string{"bash", "-c", "mkdir -p /etc /usr/bin /tmp/vgpu " + VGPU_DIR_PATH}
+					_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+				}
+				if err != nil {
+					klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+					return fmt.Errorf("Command [%s] call failed: %v", strings.Join(cmd, " "), err)
+				}
+
+				// 复制nvidia-smi命令行文件到目标容器
+				//if _, _, err := client.CopyToPod(kubeClient, ownerPod, container,
+				//	NVIDIA_SMI_FILE_PATH, "/usr/bin"); err != nil {
+				//	// return fmt.Errorf("Copying file [%s] to container [%s] failed: %v", NVIDIA_SMI_FILE_PATH, NVIDIA_SMI_FILE_PATH, err)
+				//	klog.Errorf("Copying file [%s] to container [%s] failed: %v", NVIDIA_SMI_FILE_PATH, NVIDIA_SMI_FILE_PATH, err)
+				//}
 
 				// 复制vgpu库到目标容器
 				if _, _, err := client.CopyToPod(kubeClient, ownerPod, container,
 					VGPU_LIBFILE_PATH, VGPU_LIBFILE_PATH); err != nil {
-					return fmt.Errorf("Copying file [%s] to pod failed: %v", VGPU_LIBFILE_PATH, err)
+					return fmt.Errorf("Copying file [%s] to container [%s] failed: %v", VGPU_LIBFILE_PATH, VGPU_LIBFILE_PATH, err)
 				}
 				if _, _, err := client.CopyToPod(kubeClient, ownerPod, container,
 					VGPU_PRELOAD_PATH, "/etc/ld.so.preload"); err != nil {
-					return fmt.Errorf("Copying file [%s] to pod failed: %v", VGPU_PRELOAD_PATH, err)
+					return fmt.Errorf("Copying file [%s] to container [%s] failed: %v", VGPU_PRELOAD_PATH, "/etc/ld.so.preload", err)
 				}
-				var uuids []string
-				for _, dev := range devMap {
-					uuids = append(uuids, dev.UUID)
+
+				shell := GetInitVGPUShell(GetVGPUEnvs(devMap))
+				cmd = []string{"sh", "-c", "cat > /initVGPU.sh && chmod +x /initVGPU.sh && /initVGPU.sh"}
+				_, _, err = client.WriteToPod(kubeClient, ownerPod, container, []byte(shell), cmd)
+				if err != nil {
+					return fmt.Errorf("Failed to initialize vgpu: %v", err)
 				}
-				cmd := []string{"sh", "-c", "export "}
-				if _, _, err := client.ExecCmdToPod(kubeClient, ownerPod, container, cmd); err != nil {
-					// 这里先忽略失败
-					klog.Errorln(err)
+				nameStr := ownerPod.Annotations[InitVGPUAnnotations]
+				var ctrNames []string
+				if len(strings.TrimSpace(nameStr)) > 0 {
+					ctrNames = strings.Split(strings.TrimSpace(nameStr), ",")
 				}
+				if !util.ContainsString(ctrNames, container.Name) {
+					ctrNames = append(ctrNames, container.Name)
+					annotations := map[string]string{InitVGPUAnnotations: strings.Join(ctrNames, ",")}
+					if err = client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+						return fmt.Errorf("Failed to patch pod init vGPU: %v", err)
+					}
+				}
+
 			}
 		}
 	}
@@ -321,7 +362,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 }
 
 // 获取卸载的设备信息
-func (m *VolcanoVGPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *VolcanoVGPUMounter) GetUnMountDeviceInfo(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 	var deviceInfos []api.DeviceInfo
 	for _, slavePod := range slavePods {
 
@@ -365,4 +406,53 @@ func (m *VolcanoVGPUMounter) GetDeviceRunningProcesses(containerPids []int, devi
 		}
 	}
 	return pids, nil
+}
+
+// 卸载设备成功前的后续动作
+func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
+	var tmpSlavePods []*v1.Pod
+	for i, slavePod := range slavePods {
+		if config.AnnoIsExpansion(slavePod.Annotations) {
+			continue // 跳过用于扩容的pod
+		}
+		// 找到device-mounter挂载的设备pod
+		tmpSlavePods = append(tmpSlavePods, slavePods[i])
+	}
+	cacheFile := GetVGPUCacheFileDir(ownerPod, container)
+	if _, err := os.Stat(cacheFile); err == nil {
+		// vgpu缓存存在，从缓存中剔除设备
+		devMap := map[string]Device{}
+		for _, slavePod := range tmpSlavePods {
+			tmpMap := GetPodDevMap(slavePod)
+			klog.Infoln("unmount slave", slavePod.Name, "devices ", devMap)
+			for devuuid, dev := range tmpMap {
+				devMap[devuuid] = dev
+			}
+		}
+		_ = MutationCacheFunc(cacheFile, func(cache *sharedRegionT) error {
+			length := cache.num
+			for i := length - 1; i >= 0; i-- {
+				devuuid := string(cache.uuids[i].uuid[:])[0:40]
+				if _, ok := devMap[devuuid]; ok {
+					cache.limit[i] = 0
+					cache.sm_limit[i] = 0
+					cache.uuids[i] = uuid{uuid: [96]byte{}}
+					cache.num--
+				}
+			}
+			return nil
+		})
+	}
+	nameStr, ok := ownerPod.Annotations[InitVGPUAnnotations]
+	if ok {
+		ctrNames := strings.Split(nameStr, ",")
+		ctrNames = util.DeleteSliceFunc(ctrNames, func(s string) bool {
+			return s != container.Name
+		})
+		annotations := map[string]string{InitVGPUAnnotations: strings.Join(ctrNames, ",")}
+		if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+			return fmt.Errorf("Failed to patch pod init vGPU: %v", err)
+		}
+	}
+	return nil
 }

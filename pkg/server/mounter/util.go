@@ -43,20 +43,29 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 	if pod == nil {
 		return nil, fmt.Errorf("The target pod is empty")
 	}
+	if cont == nil {
+		if len(pod.Spec.Containers) == 1 {
+			ctr := &api.Container{}
+			ctr.Name = pod.Spec.Containers[0].Name
+			ctr.Index = 0
+			return ctr, nil
+		}
+		return nil, fmt.Errorf("Pod has multiple containers, target container must be specified")
+	}
 	for i, container := range pod.Spec.Containers {
-		if cont.Name != "" && container.Name == cont.Name {
+		if container.Name == cont.Name {
 			ctr := &api.Container{}
 			ctr.Name = cont.Name
 			ctr.Index = uint32(i)
 			return ctr, nil
-		} else if int(cont.Index) == i {
+		} else if cont.Name == "" && int(cont.Index) == i {
 			ctr := &api.Container{}
 			ctr.Name = container.Name
 			ctr.Index = cont.Index
 			return ctr, nil
 		}
 	}
-	return nil, fmt.Errorf("Container %v not found", cont)
+	return nil, fmt.Errorf("Target container %v not found", cont)
 }
 
 func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {

@@ -50,6 +50,20 @@ func ContainsString(slice []string, item string) bool {
 	return false
 }
 
+func DeleteSliceFunc[S ~[]E, E any](s S, filter func(E) bool) S {
+	if s == nil {
+		return s
+	}
+	j := 0
+	for _, e := range s {
+		if filter(e) {
+			s[j] = e
+			j++
+		}
+	}
+	return s[:j]
+}
+
 func CheckResourcesInNode(node *v1.Node, request map[v1.ResourceName]resource.Quantity) bool {
 	if node == nil {
 		return false

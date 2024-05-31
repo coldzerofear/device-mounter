@@ -112,9 +112,11 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Message: err.Error(),
 		}, nil
 	}
+	kubeConfig := client.GetKubeConfig("")
+	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 
 	// 校验设备资源
-	result, msg, ok := deviceMounter.CheckMountResources(s.KubeClient, node, pod, container, resources, req.GetAnnotations())
+	result, msg, ok := deviceMounter.CheckMountResources(kubeClient, node, pod, container, resources, req.GetAnnotations())
 	if !ok || result != api.ResultCode_Success {
 		return &api.DeviceResponse{
 			Result:  result,
@@ -192,7 +194,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 
 	// 获取挂载设备信息
-	deviceInfos, err := deviceMounter.GetMountDeviceInfo(s.KubeClient, pod, container, readyPods)
+	deviceInfos, err := deviceMounter.GetMountDeviceInfo(kubeClient, pod, container, readyPods)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get mount device info error")
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
@@ -263,7 +265,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		}, nil
 	}
 
-	err = deviceMounter.MountDeviceInfoAfter(s.KubeClient, config, pod, container, readyPods)
+	err = deviceMounter.MountDeviceInfoAfter(kubeClient, config, pod, container, readyPods)
 	if err != nil {
 		klog.Warningf("Device mounting follow-up action failed: %v", err)
 		// TODO 回滚设备文件，忽略失败
@@ -368,8 +370,10 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 			Message: fmt.Sprintf("No device found for uninstallation"),
 		}, nil
 	}
+	kubeConfig := client.GetKubeConfig("")
+	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	// 获取卸载的设备信息
-	deviceInfos, err := deviceMounter.GetUnMountDeviceInfo(s.KubeClient, pod, container, slavePods)
+	deviceInfos, err := deviceMounter.GetUnMountDeviceInfo(kubeClient, pod, container, slavePods)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get unmount device info error")
 		return &api.DeviceResponse{
@@ -451,6 +455,18 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: fmt.Sprintf("Failed to set access permissions for cgroup devices: %v", err),
+		}, nil
+	}
+	err = deviceMounter.UnMountDeviceInfoAfter(kubeClient, config, pod, container, slavePods)
+	if err != nil {
+		klog.Warningf("Device unmounting follow-up action failed: %v", err)
+		// TODO 回滚设备文件，忽略失败
+		_ = rollbackFiles()
+		// TODO 回滚设备权限，暂时忽略回滚失败的情况
+		_ = rollbackRules()
+		return &api.DeviceResponse{
+			Result:  api.ResultCode_Fail,
+			Message: fmt.Sprintf("Failed to unmount device information after: %v", err),
 		}, nil
 	}
 

@@ -228,3 +228,8 @@ func (m *NvidiaGPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 	}
 	return processes.List(), nil
 }
+
+// 卸载设备成功前的后续动作
+func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+	return nil
+}

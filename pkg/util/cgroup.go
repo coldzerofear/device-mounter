@@ -231,9 +231,9 @@ func AddDeviceFile(config *Config, deviceInfo api.DeviceInfo) error {
 		deviceInfo.DeviceFilePath, deviceInfo.Type, deviceInfo.Major, deviceInfo.Minor)
 	stdout, stderr, err := config.Execute("sh", "-c", cmd)
 	if err != nil {
-		klog.Errorln("Failed to execute cmd", cmd)
-		klog.Errorln("Std Output", stdout)
-		klog.Errorln("Err Output", stderr)
+		klog.Errorln("Failed to execute cmd:", cmd)
+		klog.Errorln("Std Output:", stdout)
+		klog.Errorln("Err Output:", stderr)
 		return err
 	}
 	return nil
@@ -246,9 +246,9 @@ func RemoveDeviceFile(config *Config, deviceInfo api.DeviceInfo) error {
 	cmd := "rm " + deviceInfo.DeviceFilePath
 	stdout, stderr, err := config.Execute("sh", "-c", cmd)
 	if err != nil {
-		klog.Errorln("Failed to execute cmd", cmd)
-		klog.Errorln("Std Output", stdout)
-		klog.Errorln("Err Output", stderr)
+		klog.Errorln("Failed to execute cmd:", cmd)
+		klog.Errorln("Std Output:", stdout)
+		klog.Errorln("Err Output:", stderr)
 		return err
 	}
 	return nil
@@ -262,9 +262,9 @@ func KillRunningProcesses(config *Config, processes []int) error {
 	cmd := "kill " + strings.Join(procs, " ")
 	stdout, stderr, err := config.Execute("sh", "-c", cmd)
 	if err != nil {
-		klog.Errorln("Failed to execute cmd", cmd)
-		klog.Errorln("Std Output", stdout)
-		klog.Errorln("Err Output", stderr)
+		klog.Errorln("Failed to execute cmd:", cmd)
+		klog.Errorln("Std Output:", stdout)
+		klog.Errorln("Err Output:", stderr)
 		return err
 	}
 	return nil
@@ -276,7 +276,7 @@ func AddDevicePermission(deviceCGroupPath string, deviceInfo api.DeviceInfo) err
 	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 	if err != nil {
 		klog.Errorln("Exec \"" + cmd + "\" failed")
-		klog.Errorln("Output", string(out))
+		klog.Errorln("Output:", string(out))
 		klog.Errorln(err)
 		return err
 	} else {
@@ -290,7 +290,7 @@ func RemoveDevicePermission(deviceCGroupPath string, deviceInfo api.DeviceInfo) 
 	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 	if err != nil {
 		klog.Errorln("Exec \"" + cmd + "\" failed")
-		klog.Errorln("Output", string(out))
+		klog.Errorln("Output:", string(out))
 		klog.Errorln(err)
 		return err
 	} else {

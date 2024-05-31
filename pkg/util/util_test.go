@@ -8,6 +8,53 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+func Test_DeleteSliceFunc(t *testing.T) {
+	var tests = []struct {
+		name    string
+		slice   []string
+		match   []string
+		noMatch []string
+		want    []string
+	}{
+		{
+			name:  "Example 0, Macth",
+			slice: []string{"test1", "test2", "test3"},
+			match: []string{"test1", "test2"},
+			want:  []string{"test1", "test2"},
+		},
+		{
+			name:  "Example 1, Macth",
+			slice: []string{"test1", "test2", "test3", "test3"},
+			match: []string{"test1", "test3"},
+			want:  []string{"test1", "test3", "test3"},
+		},
+		{
+			name:    "Example 2, No Macth",
+			slice:   []string{"test1", "test2", "test3", "test3"},
+			noMatch: []string{"test4"},
+			want:    []string{"test1", "test2", "test3", "test3"},
+		},
+		{
+			name:    "Example 3, No Match",
+			slice:   []string{"test1", "test2", "test3", "test1", "test3"},
+			noMatch: []string{"test1", "test2"},
+			want:    []string{"test3", "test3"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			res := DeleteSliceFunc(test.slice, func(s string) bool {
+				if len(test.match) > 0 {
+					return ContainsString(test.match, s)
+				} else {
+					return !ContainsString(test.noMatch, s)
+				}
+			})
+			assert.Equal(t, test.want, res)
+		})
+	}
+}
+
 func Test_CheckResourcesInSlice(t *testing.T) {
 	var tests = []struct {
 		name      string

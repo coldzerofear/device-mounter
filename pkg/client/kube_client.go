@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -66,4 +68,27 @@ func RetryGetPodByName(kubeClient *kubernetes.Clientset, name, namespace string,
 		return true, nil
 	})
 	return pod, err
+}
+
+func PatchPodAnnotations(kubeclient *kubernetes.Clientset, pod *v1.Pod, annotations map[string]string) error {
+	type patchMetadata struct {
+		Annotations map[string]string `json:"annotations,omitempty"`
+	}
+	type patchPod struct {
+		Metadata patchMetadata `json:"metadata"`
+	}
+
+	p := patchPod{}
+	p.Metadata.Annotations = annotations
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = kubeclient.CoreV1().Pods(pod.Namespace).
+		Patch(context.Background(), pod.Name, types.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
+	}
+	return err
 }

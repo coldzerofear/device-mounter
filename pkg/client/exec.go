@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"k8s-device-mounter/pkg/api"
@@ -13,13 +14,56 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/cmd/cp"
 	"k8s.io/kubectl/pkg/cmd/util"
 )
 
-func ExecCmdToPod(kubeClient *kubernetes.Clientset, pod *v1.Pod, ctr *api.Container, cmd []string) (string, string, error) {
+func WriteToPod(kubeclient *kubernetes.Clientset,
+	pod *v1.Pod, ctr *api.Container, content []byte, cmd []string) (string, string, error) {
+	req := kubeclient.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(pod.Name).
+		Namespace(pod.Namespace).
+		SubResource("exec").
+		Param("container", ctr.Name).
+		VersionedParams(&v1.PodExecOptions{
+			Command:   cmd,
+			Container: ctr.Name,
+			Stdin:     true,
+			Stdout:    true,
+			Stderr:    true,
+			TTY:       false,
+		}, scheme.ParameterCodec)
+	config := GetKubeConfig(kubeConfigPath)
+	executor, err := remotecommand.
+		NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return "", "", err
+	}
+	buf := bytes.NewBuffer(content)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = executor.StreamWithContext(
+		context.Background(),
+		remotecommand.StreamOptions{
+			Stdin:  buf,
+			Stdout: stdout,
+			Stderr: stderr,
+			Tty:    false,
+		})
+	if err != nil {
+		return "", "", err
+	}
+	// 输出命令执行结果
+	printOutput(stdout, stderr)
+	return stdout.String(), stderr.String(), nil
+}
+
+func ExecCmdToPod(kubeclient *kubernetes.Clientset,
+	pod *v1.Pod, ctr *api.Container, cmd []string) (string, string, error) {
 	// 执行命令
-	req := kubeClient.CoreV1().RESTClient().Post().
+	req := kubeclient.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod.Name).
 		Namespace(pod.Namespace).
@@ -34,31 +78,35 @@ func ExecCmdToPod(kubeClient *kubernetes.Clientset, pod *v1.Pod, ctr *api.Contai
 			TTY:       false,
 		}, scheme.ParameterCodec)
 	config := GetKubeConfig(kubeConfigPath)
-	executor, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	executor, err := remotecommand.
+		NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
 		return "", "", err
 	}
-	var stdout, stderr bytes.Buffer
-	err = executor.Stream(remotecommand.StreamOptions{
-		Stdin:  nil,
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Tty:    false,
-	})
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err = executor.StreamWithContext(
+		context.Background(),
+		remotecommand.StreamOptions{
+			Stdin:  nil,
+			Stdout: stdout,
+			Stderr: stderr,
+			Tty:    false,
+		})
 	if err != nil {
-		// Error executing command: unable to upgrade connection: you must specify at least 1 of stdin, stdout, stderr
-		return "", "", fmt.Errorf("Error executing command: %v", err)
+		return "", "", err
 	}
 	// 输出命令执行结果
-	fmt.Println("STDOUT:", stdout.String())
-	fmt.Println("STDERR:", stderr.String())
+	printOutput(stdout, stderr)
 	return stdout.String(), stderr.String(), nil
 }
 
-func CopyToPod(kubeClient *kubernetes.Clientset, pod *v1.Pod, ctr *api.Container, src, dst string) (string, string, error) {
+func CopyToPod(kubeclient *kubernetes.Clientset, pod *v1.Pod,
+	ctr *api.Container, src, dst string) (string, string, error) {
 	kubeconfig := GetKubeConfig(kubeConfigPath)
 	kubeconfig.APIPath = "/api"
-	kubeconfig.GroupVersion = &schema.GroupVersion{Version: "v1"} // this targets the core api groups so the url path will be /api/v1
+	// this targets the core api groups so the url path will be /api/v1
+	kubeconfig.GroupVersion = &schema.GroupVersion{Version: "v1"}
 	kubeconfig.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
 
 	f := util.NewFactory(genericclioptions.NewConfigFlags(true))
@@ -70,13 +118,22 @@ func CopyToPod(kubeClient *kubernetes.Clientset, pod *v1.Pod, ctr *api.Container
 		return "", "", err
 	}
 	opts.ClientConfig = kubeconfig
-	opts.Clientset = kubeClient
+	opts.Clientset = kubeclient
 	opts.Namespace = pod.Namespace
 	opts.Container = ctr.Name
+	//opts.MaxTries = 3
 	if err := opts.Run(); err != nil {
 		return "", "", err
 	}
-	fmt.Println("STDOUT:", stdout.String())
-	fmt.Println("STDERR:", stderr.String())
+	printOutput(stdout, stderr)
 	return stdout.String(), stderr.String(), nil
+}
+
+func printOutput(stdout, stderr *bytes.Buffer) {
+	if stdout != nil && stdout.String() != "" {
+		klog.Infoln("STDOUT:", stdout.String())
+	}
+	if stderr != nil && stderr.String() != "" {
+		klog.Errorln("STDERR:", stderr.String())
+	}
 }

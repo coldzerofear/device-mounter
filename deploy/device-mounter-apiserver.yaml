@@ -163,6 +163,13 @@ spec:
             - name: server-cert
               mountPath: /tmp/k8s-device-mounter/serving-certs
               readOnly: true
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
       volumes:
         - name: config
           configMap:

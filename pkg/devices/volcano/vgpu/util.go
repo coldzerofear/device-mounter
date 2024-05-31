@@ -12,13 +12,18 @@ import (
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/api/v1alpha1"
+	"k8s-device-mounter/pkg/client"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
 
 const (
+	InitVGPUAnnotations = v1alpha1.Group + "/initVGPU"
+
 	AssignedIDsAnnotations = "volcano.sh/vgpu-ids-new"
 
 	GPUInUse = "nvidia.com/use-gputype"
@@ -42,10 +47,15 @@ const (
 	NVIDIA_NVIDIACTL_FILE_PATH        = "/dev/nvidiactl"
 	NVIDIA_NVIDIA_UVM_FILE_PATH       = "/dev/nvidia-uvm"
 	NVIDIA_NVIDIA_UVM_TOOLS_FILE_PATH = "/dev/nvidia-uvm-tools"
+	NVIDIA_SMI_FILE_PATH              = "/usr/bin/nvidia-smi"
 
-	VGPU_LIBFILE_PATH = "/usr/local/vgpu/libvgpu.so"
-	VGPU_PRELOAD_PATH = "/usr/local/vgpu/ld.so.preload"
+	DRIVER_VERSION_PROC_PATH = "/proc/driver/nvidia/version"
 
+	VGPU_DIR_PATH     = "/usr/local/vgpu"
+	VGPU_LIBFILE_PATH = VGPU_DIR_PATH + "/libvgpu.so"
+	VGPU_PRELOAD_PATH = VGPU_DIR_PATH + "/ld.so.preload"
+
+	NVIDIA_VISIBLE_DEVICES_ENV          = "NVIDIA_VISIBLE_DEVICES"
 	CUDA_DEVICE_SM_LIMIT_ENV            = "CUDA_DEVICE_SM_LIMIT"
 	CUDA_DEVICE_MEMORY_LIMIT_ENV        = "CUDA_DEVICE_MEMORY_LIMIT"
 	CUDA_DEVICE_MEMORY_SHARED_CACHE_ENV = "CUDA_DEVICE_MEMORY_SHARED_CACHE"
@@ -54,10 +64,6 @@ const (
 	// GPU算力拦截开关 FORCE/DISABLE
 	GPU_CORE_UTILIZATION_POLICY_ENV = "GPU_CORE_UTILIZATION_POLICY"
 )
-
-func getSharedCache() string {
-	return fmt.Sprintf("/tmp/vgpu/%v.cache", uuid2.NewUUID())
-}
 
 type deviceMemory struct {
 	contextSize uint64
@@ -286,9 +292,8 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
-func MutationCacheFunc(targetPod *v1.Pod, container *api.Container, mutaFunc func(*sharedRegionT) error) error {
+func MutationCacheFunc(cacheFile string, mutaFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
-	cacheFile := GetVGPUCacheFileDir(targetPod, container)
 	cacheConfig, data, err := MmapVGPUCacheConfig(cacheFile)
 	if err != nil {
 		return err
@@ -305,3 +310,79 @@ func ConvertUUID(devuuid string) uuid {
 	uuid.uuid[len(devuuid)] = byte(0) // \0结尾
 	return uuid
 }
+
+func getSharedCache() string {
+	return fmt.Sprintf("/tmp/vgpu/%v.cache", uuid2.NewUUID())
+}
+
+func GetVGPUEnvs(devMap map[string]Device) []string {
+	var (
+		uuids        []string
+		smLimitEnvs  []string
+		memLimitEnvs []string
+		smPolicy     = "DISABLE"
+		index        = 0
+	)
+	for devuuid, dev := range devMap {
+		uuids = append(uuids, devuuid)
+		limitKey := fmt.Sprintf("%s_%d", CUDA_DEVICE_MEMORY_LIMIT_ENV, index)
+		memLimitEnvs = append(memLimitEnvs, fmt.Sprintf("%s=%vm", limitKey, dev.Usedmem))
+		if dev.Usedcores > 0 && dev.Usedcores < 100 {
+			smPolicy = "FORCE"
+		}
+		limitKey = fmt.Sprintf("%s_%d", CUDA_DEVICE_SM_LIMIT_ENV, index)
+		smLimitEnvs = append(smLimitEnvs, fmt.Sprintf("%s=%v", limitKey, dev.Usedcores))
+		index++
+	}
+	smPolicyEnv := fmt.Sprintf("%s=%s", GPU_CORE_UTILIZATION_POLICY_ENV, smPolicy)
+	// sharedCacheEnv := fmt.Sprintf("%s=%s", CUDA_DEVICE_MEMORY_SHARED_CACHE_ENV, getSharedCache())
+	devicesEnv := fmt.Sprintf("%s=%s", NVIDIA_VISIBLE_DEVICES_ENV, strings.Join(uuids, ","))
+	envs := append(smLimitEnvs, memLimitEnvs...)
+	envs = append(envs, smPolicyEnv, devicesEnv)
+	return envs
+}
+
+func GetInitVGPUShell(envs []string) string {
+	initShell := "#!/bin/sh\n"
+	for _, env := range envs {
+		initShell += fmt.Sprintf("export %s\n", env)
+	}
+	initShell += NVIDIA_SMI_FILE_PATH
+	return initShell
+}
+
+func execNvidiaSMI(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container) error {
+	cmd := []string{"nvidia-smi"}
+	_, _, err := client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+	if err != nil {
+		// 这里先忽略失败
+		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+		cmd = []string{"sh", "-c", "nvidia-smi"}
+		_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+	}
+	if err != nil {
+		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+		cmd = []string{"bash", "-c", "nvidia-smi"}
+		_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+	}
+	if err != nil {
+		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
+	}
+	return err
+}
+
+//func read_version_from_proc() error {
+//	file, err := os.Open(DRIVER_VERSION_PROC_PATH)
+//	if err != nil {
+//		return fmt.Errorf("Failed to open file %s: %v", DRIVER_VERSION_PROC_PATH, err)
+//	}
+//	compile := regexp.MustCompile("([0-9]+)(\\.[0-9]+)+")
+//	compile.FindAllString()
+//	scanner := bufio.NewScanner(file)
+//	for scanner.Scan() {
+//		line := scanner.Text()
+//		allString := compile.FindAllString(line, 1)
+//		fmt.Println(allString)
+//	}
+//	return fmt.Errorf("Version number not recognized")
+//}
