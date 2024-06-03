@@ -410,7 +410,7 @@ func (m *VolcanoVGPUMounter) GetDeviceRunningProcesses(containerPids []int, devi
 }
 
 // 卸载设备成功前的后续动作
-func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
+func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
 	var tmpSlavePods []*v1.Pod
 	for i, slavePod := range slavePods {
 		if config.AnnoIsExpansion(slavePod.Annotations) {
@@ -443,15 +443,22 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 			return nil
 		})
 	}
-	nameStr, ok := ownerPod.Annotations[InitVGPUAnnotations]
-	if ok {
-		ctrNames := strings.Split(nameStr, ",")
-		ctrNames = util.DeleteSliceFunc(ctrNames, func(s string) bool {
+
+	if nameStr, ok := ownerPod.Annotations[InitVGPUAnnotations]; ok {
+		oldNames := strings.Split(nameStr, ",")
+		newNames := util.DeleteSliceFunc(oldNames, func(s string) bool {
 			return s != container.Name
 		})
-		annotations := map[string]string{InitVGPUAnnotations: strings.Join(ctrNames, ",")}
-		if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
-			return fmt.Errorf("Failed to patch pod init vGPU: %v", err)
+
+		if len(oldNames) != len(newNames) {
+			annotations := map[string]string{InitVGPUAnnotations: strings.Join(newNames, ",")}
+			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+				return fmt.Errorf("Failed to patch pod init vGPU: %v", err)
+			}
+			// 删除vgpu文件
+			_, _, _ = cfg.Execute("sh", "-c", "rm -f /tmp/cudevshr.cache")
+			_, _, _ = cfg.Execute("sh", "-c", "rm -f "+VGPU_LIBFILE_PATH)
+			_, _, _ = cfg.Execute("sh", "-c", "rm -f /etc/ld.so.preload")
 		}
 	}
 	return nil
