@@ -24,8 +24,5 @@ const (
 )
 
 func AnnoIsExpansion(annos map[string]string) bool {
-	if annos == nil {
-		return false
-	}
-	return strings.ToLower(annos[ExpansionAnnotationKey]) == "true"
+	return annos != nil && strings.ToLower(annos[ExpansionAnnotationKey]) == "true"
 }

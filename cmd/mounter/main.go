@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"net"
 	"os"
@@ -18,9 +17,7 @@ import (
 	"k8s-device-mounter/pkg/config"
 	"k8s-device-mounter/pkg/devices"
 	"k8s-device-mounter/pkg/server/mounter"
-	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
@@ -48,7 +45,6 @@ func initFlags() {
 
 	flag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container (default alpine:latest)")
 	flag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container (default IfNotPresent)")
-	//	flag.StringVar(&config.DeviceSlavePodNamespace, "device-slave-namespace", config.DeviceSlavePodNamespace, "Specify the namespace of the slave container (default device-pool)")
 
 }
 
@@ -61,8 +57,8 @@ func main() {
 		klog.Exit("Unknown node name, please configure environment variables [NODE_NAME]")
 	}
 
-	klog.Infoln("Initialize cgroup driver...")
-	util.InitCGroupDriver()
+	klog.Infoln("Initialize CGroup driver...")
+	config.InitCGroupDriver()
 
 	klog.Infoln("Initialize the pod resources client...")
 	// TODO 初始化客户端
@@ -71,13 +67,6 @@ func main() {
 
 	klog.Infoln("Initialize the kube client...")
 	kubeClient := client.GetKubeClient(KubeConfig)
-
-	// 创建命名空间
-	//klog.Infoln("Create slave pod namespace...")
-	//err := createSlaveNamesapce(kubeClient, config.DeviceSlavePodNamespace)
-	//if err != nil {
-	//	klog.Exit(err.Error())
-	//}
 
 	klog.Infoln("Initialize the informer factory...")
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 2*time.Minute)
@@ -159,23 +148,6 @@ func main() {
 	}
 	klog.Infoln("Service stopped, please restart the service")
 	os.Exit(1)
-}
-
-func createSlaveNamesapce(kubeClient *kubernetes.Clientset, namespace string) error {
-	ns := v1.Namespace{}
-	ns.Name = namespace
-	ns.SetLabels(map[string]string{
-		"app.kubernetes.io/created-by": "k8s-device-mounter",
-		"app.kubernetes.io/managed-by": "k8s-device-mounter",
-	})
-	_, err := kubeClient.CoreV1().Namespaces().Create(context.TODO(), &ns, metav1.CreateOptions{})
-	if err != nil {
-		klog.V(3).Infof("Create slave pod namespace failed: %v", err)
-		if errors.IsAlreadyExists(err) {
-			err = nil
-		}
-	}
-	return err
 }
 
 func StartTcpService(server api.DeviceMountServiceServer, stopCh chan<- struct{}) (*grpc.Server, error) {

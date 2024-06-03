@@ -5,14 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/cgroups/devices"
@@ -20,55 +18,11 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 	devices2 "github.com/opencontainers/runc/libcontainer/devices"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/qos"
 )
-
-type CGroupDriver string
-
-var (
-	cgroupDriver CGroupDriver
-	once         sync.Once
-)
-
-const (
-	SYSTEMD  CGroupDriver = "systemd"
-	CGROUPFS CGroupDriver = "cgroupfs"
-
-	KubeletConfigPath = "/var/lib/kubelet/config.yaml"
-)
-
-func InitCGroupDriver() {
-	once.Do(func() {
-		driver := os.Getenv("CGROUP_DRIVER")
-		switch strings.ToLower(driver) {
-		case string(SYSTEMD):
-			cgroupDriver = SYSTEMD
-		case string(CGROUPFS):
-			cgroupDriver = CGROUPFS
-		default:
-			kubeletConfig, err := os.ReadFile(KubeletConfigPath)
-			if err != nil {
-				klog.Exitf("load kubelet config %s failed: %s", KubeletConfigPath, err.Error())
-			}
-			content := strings.ToLower(string(kubeletConfig))
-			pos := strings.LastIndex(content, "cgroupdriver:")
-			if pos < 0 {
-				klog.Exitf("Unable to find cgroup driver in kubeletConfig file")
-			}
-			if strings.Contains(content, string(SYSTEMD)) {
-				cgroupDriver = SYSTEMD
-				return
-			}
-			if strings.Contains(content, string(CGROUPFS)) {
-				cgroupDriver = CGROUPFS
-				return
-			}
-			klog.Exitf("Unable to find cgroup driver in kubeletConfig file")
-		}
-	})
-}
 
 // Config is the nsenter configuration used to generate
 // nsenter command
@@ -335,10 +289,10 @@ func GetK8sPodCGroupPath(pod *v1.Pod, container *api.Container, oldVersion bool)
 	}
 	cgroups = append(cgroups, "pod"+string(pod.UID))
 
-	switch cgroupDriver {
-	case SYSTEMD:
+	switch config.CurrentCGroupDriver {
+	case config.SYSTEMD:
 		return convertPath(runtimeName, containerId, cgroups, oldVersion), nil
-	case CGROUPFS:
+	case config.CGROUPFS:
 		return filepath.Join(path.Join(cgroups...), containerId), nil
 	default:
 		return "", fmt.Errorf("Unknown CGroup Driver, Unable to locate cgroup directory")
