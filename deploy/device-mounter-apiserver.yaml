@@ -121,6 +121,9 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+        seccomp.security.alpha.kubernetes.io/pod: runtime/default
       labels:
         app.kubernetes.io/component: apiserver
         app.kubernetes.io/created-by: device-mounter-apiserver
@@ -132,10 +135,10 @@ spec:
       # be rescheduled after a failure.
       # See https://kubernetes.io/docs/tasks/administer-cluster/guaranteed-scheduling-critical-addon-pods/
       priorityClassName: "system-node-critical"
-#      securityContext:
+      securityContext:
 #        runAsNonRoot: true
-#        seccompProfile:
-#          type: RuntimeDefault
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 10
       restartPolicy: Always
       containers:

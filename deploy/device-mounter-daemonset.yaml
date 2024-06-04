@@ -59,8 +59,12 @@ spec:
       app.kubernetes.io/component: daemonset
       app.kubernetes.io/created-by: device-mounter-daemonset
       app.kubernetes.io/instance: device-mounter-daemonset
+  updateStrategy:
+    type: RollingUpdate
   template:
     metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         app.kubernetes.io/component: daemonset
         app.kubernetes.io/created-by: device-mounter-daemonset
@@ -83,6 +87,7 @@ spec:
           imagePullPolicy: Always
           securityContext:
             privileged: true
+           # readOnlyRootFilesystem: true
           command: ["/mounter"]
           args:
             - "--tcp-bind-address=:1200"
@@ -90,18 +95,23 @@ spec:
             - "--device-slave-pull-policy=IfNotPresent"
             - "--v=3"
           env:
-#            - name: CGROUP_DRIVER
-#              value: "cgroupfs" | "systemd"
+           # - name: CGROUP_DRIVER
+           #   value: "cgroupfs" | "systemd"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+              # 挂载gpu设备
             - name: NVIDIA_VISIBLE_DEVICES
               value: all
             - name: NVIDIA_MIG_MONITOR_DEVICES
               value: all
+              # 挂载gpu驱动
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: utility
+              # 启用npu驱动
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:$PATH
           ports:
             - containerPort: 1200
           readinessProbe:
@@ -121,6 +131,9 @@ spec:
               mountPath: /tmp/vgpu/containers
             - name: vgpu
               mountPath: /usr/local/vgpu
+            - name: hiai-driver # 挂载npu驱动目录
+              mountPath: /usr/local/Ascend/driver
+              readOnly: true
             - name: mounter
               mountPath: /var/run/k8s-device-mounter
           resources:
@@ -147,6 +160,10 @@ spec:
           hostPath:
             type: DirectoryOrCreate
             path: /usr/local/vgpu
+        - name: hiai-driver
+          hostPath:
+            type: DirectoryOrCreate
+            path: /usr/local/Ascend/driver
         - name: mounter
           hostPath:
             type: DirectoryOrCreate
