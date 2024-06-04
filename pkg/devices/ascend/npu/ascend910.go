@@ -17,5 +17,10 @@ const (
 func CheckRequest910Resources(request map[v1.ResourceName]resource.Quantity) bool {
 	resourceList := []string{ResourceNameAscend910, ResourceNameAscend910_2c,
 		ResourceNameAscend910_4c, ResourceNameAscend910_8c, ResourceNameAscend910_16c}
-	return util.CheckResourcesInSlice(request, resourceList, nil)
+	for _, resource := range resourceList {
+		if util.CheckResourcesInSlice(request, []string{resource}, nil) {
+			return true
+		}
+	}
+	return false
 }

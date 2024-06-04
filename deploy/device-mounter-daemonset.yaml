@@ -111,7 +111,7 @@ spec:
               value: utility
               # 启用npu驱动
             - name: LD_LIBRARY_PATH
-              value: /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:$PATH
+              value: /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:$LD_LIBRARY_PATH
           ports:
             - containerPort: 1200
           readinessProbe:
