@@ -464,7 +464,7 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 	return nil
 }
 
-func (m *VolcanoVGPUMounter) RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *VolcanoVGPUMounter) RecycledPodResources(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
 	slavePodKeys := make([]types.NamespacedName, 0)
 	for _, slavePod := range slavePods {
 		if config.AnnoIsExpansion(slavePod.Annotations) {

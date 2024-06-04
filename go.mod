@@ -3,6 +3,7 @@ module k8s-device-mounter
 go 1.22.0
 
 require (
+	Ascend-device-plugin v0.0.0-00010101000000-000000000000
 	github.com/NVIDIA/go-nvml v0.12.0-5
 	github.com/cilium/ebpf v0.12.3
 	github.com/emicklei/go-restful/v3 v3.11.0
@@ -18,6 +19,7 @@ require (
 	golang.org/x/sys v0.19.0
 	google.golang.org/grpc v1.58.3
 	google.golang.org/protobuf v1.33.0
+	huawei.com/npu-exporter/v6 v6.0.0-RC2.b001
 	k8s.io/api v0.30.1
 	k8s.io/apimachinery v0.30.1
 	k8s.io/cli-runtime v0.29.0
@@ -105,4 +107,9 @@ require (
 	sigs.k8s.io/kustomize/api v0.13.5-0.20230601165947-6ce0bf390ce3 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.14.3-0.20230601165947-6ce0bf390ce3 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
+)
+
+replace (
+	Ascend-device-plugin => gitee.com/ascend/ascend-device-plugin v0.0.0-20240601094938-f91631c162ae
+	huawei.com/npu-exporter/v6 => gitee.com/ascend/ascend-npu-exporter/v6 v6.0.0-RC2.b001
 )

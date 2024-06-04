@@ -68,14 +68,29 @@ func (gpuCollector *GPUCollector) initGPUInfo() error {
 	return nil
 }
 
-func (gpuCollector *GPUCollector) GetPodGPUResources(name, namespace string) ([]*NvidiaGPU, error) {
+func (gpuCollector *GPUCollector) GetPodGPUResources(podName, podNamespace string) ([]*NvidiaGPU, error) {
 	if err := gpuCollector.UpdateGPUStatus(); err != nil {
 		klog.Errorln("Failed to update gpu status")
 		return nil, err
 	}
 	var gpuResources []*NvidiaGPU
 	for _, gpuDev := range gpuCollector.GPUList {
-		if gpuDev.PodName == name && gpuDev.Namespace == namespace {
+		if gpuDev.PodName == podName && gpuDev.PodNamespace == podNamespace {
+			gpuResources = append(gpuResources, gpuDev)
+		}
+	}
+	return gpuResources, nil
+}
+
+func (gpuCollector *GPUCollector) GetContainerGPUResources(podName, podNamespace, containerName string) ([]*NvidiaGPU, error) {
+	if err := gpuCollector.UpdateGPUStatus(); err != nil {
+		klog.Errorln("Failed to update gpu status")
+		return nil, err
+	}
+	var gpuResources []*NvidiaGPU
+	for _, gpuDev := range gpuCollector.GPUList {
+		if gpuDev.PodName == podName && gpuDev.PodNamespace == podNamespace &&
+			gpuDev.ContainerName == containerName {
 			gpuResources = append(gpuResources, gpuDev)
 		}
 	}
@@ -119,14 +134,18 @@ func (gpuCollector *GPUCollector) UpdateGPUStatus() error {
 						newGPU := New(minor, uuid)
 						newGPU.State = GPU_ALLOCATED_STATE
 						newGPU.PodName = pod.Name
-						newGPU.Namespace = pod.Namespace
+						newGPU.PodNamespace = pod.Namespace
+						newGPU.ContainerName = container.Name
 						gpuCollector.GPUList = append(gpuCollector.GPUList, newGPU)
 					} else {
 						// 更新 gpu 信息
 						nvidiaGPU.State = GPU_ALLOCATED_STATE
 						nvidiaGPU.PodName = pod.Name
-						nvidiaGPU.Namespace = pod.Namespace
-						klog.V(4).InfoS("GPU allocated", "ID", nvidiaGPU.UUID, "Device", nvidiaGPU.DeviceFilePath, "PodName", pod.Name, "Namespace", pod.Namespace)
+						nvidiaGPU.PodNamespace = pod.Namespace
+						nvidiaGPU.ContainerName = container.Name
+						klog.V(4).InfoS("GPU allocated", "ID", nvidiaGPU.UUID,
+							"Device", nvidiaGPU.DeviceFilePath, "PodName", pod.Name, "Namespace",
+							pod.Namespace, "ContainerName", container.Name)
 					}
 				}
 			}
@@ -174,7 +193,8 @@ type NvidiaGPU struct {
 	UUID           string
 	State          GPUState
 	PodName        string
-	Namespace      string
+	PodNamespace   string
+	ContainerName  string
 }
 
 type GPUState string
@@ -191,7 +211,8 @@ func New(minorNumber int, uuid string) *NvidiaGPU {
 		UUID:           uuid,
 		State:          GPU_FREE_STATE,
 		PodName:        "",
-		Namespace:      "",
+		PodNamespace:   "",
+		ContainerName:  "",
 	}
 }
 
@@ -206,7 +227,8 @@ func (gpu *NvidiaGPU) String() string {
 
 func (gpu *NvidiaGPU) ResetState() {
 	gpu.PodName = ""
-	gpu.Namespace = ""
+	gpu.PodNamespace = ""
+	gpu.ContainerName = ""
 	gpu.State = GPU_FREE_STATE
 }
 

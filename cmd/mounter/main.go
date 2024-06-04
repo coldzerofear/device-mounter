@@ -69,7 +69,7 @@ func main() {
 	kubeClient := client.GetKubeClient(KubeConfig)
 
 	klog.Infoln("Initialize the informer factory...")
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, 2*time.Minute)
+	informerFactory := informers.NewSharedInformerFactory(kubeClient, 5*time.Minute)
 	informerFactory.Core().V1().Pods().Informer()
 	podInformer := informerFactory.InformerFor(&v1.Pod{},
 		func(k kubernetes.Interface, duration time.Duration) cache.SharedIndexInformer {

@@ -154,7 +154,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Name:      slavePod.Name,
 			Namespace: slavePod.Namespace,
 		})
-		_, _ = s.CreateSlavePodPDB(ctx, slavePod)
+		_, _ = s.CreateSlavePodDisruptionBudget(ctx, slavePod)
 	}
 	if err != nil || len(slavePodKeys) == 0 {
 		// 创建失败 回收已创建的pod

@@ -1,9 +1,18 @@
-
-# Image URL to use all building/pushing image targets
-IMG ?= registry.tydic.com/device-mounter/device-mounter:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29.0
 GOOS ?= linux
+# current arch
+ARCH ?= $(shell uname -m)
+ifeq ($(ARCH), x86_64)
+DOCKER_ARCH_ARG = amd64
+else ifeq ($(ARCH), aarch64)
+DOCKER_ARCH_ARG = arm64
+else
+$(error Unsupported architecture: $(ARCH))
+endif
+
+# Image URL to use all building/pushing image targets
+IMG ?= registry.tydic.com/device-mounter/device-mounter:$(DOCKER_ARCH_ARG)-latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -54,40 +63,22 @@ vet: ## Run go vet against code.
 .PHONY: test
 test: fmt vet ## Run tests.
 	@echo Running: CGO_ENABLED=1 CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' GOOS=$(GOOS) go test -ldflags="-extldflags=-Wl,-z,lazy" ./... -coverprofile cover.out
-	CGO_ENABLED=1 CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' GOOS=$(GOOS)  go test -ldflags="-extldflags=-Wl,-z,lazy" ./... -coverprofile cover.out
+	CGO_ENABLED=1 GOOS=$(GOOS) CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go test -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack" ./... -coverprofile cover.out
 
 ##@ Build
 
 .PHONY: build
 build: fmt vet ## Build manager binary.
-	CGO_ENABLED=0 go build -o bin/apiserver cmd/apiserver/main.go
-	CGO_ENABLED=1 CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go build -ldflags="-extldflags=-Wl,-z,lazy" -o bin/mounter cmd/mounter/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) go build -o bin/apiserver cmd/apiserver/main.go
+	CGO_ENABLED=1 GOOS=$(GOOS) CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack" -o bin/mounter cmd/mounter/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg TARGETARCH=$(DOCKER_ARCH_ARG) --build-arg TARGETOS=$(GOOS) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
-
-# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-.PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name project-v3-builder
-	$(CONTAINER_TOOL) buildx use project-v3-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm project-v3-builder
-	rm Dockerfile.cross
-

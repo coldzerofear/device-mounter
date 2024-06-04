@@ -10,13 +10,14 @@ K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove dev
 
 * Supports add or remove Device resources of running Pod without stopping or restarting
 * Compatible with kubernetes scheduler
+* Compatible with kubernetes device plugin
 * Compatible with cgroup v1 and cgroup v2
 
 ## Prerequisite 
 
 * Kubernetes v1.22+ (other version not tested)
 * Docker / Containerd (other version not tested)
-* Runc based container runtime
+* runc based container runtime
 
 ## Supported devices
 
@@ -60,7 +61,9 @@ kubectl delete -f deploy/device-mounter-daemonset.yaml
 
 ## Quick Start
 
-See [QuickStart.md](docs/guide/QuickStart.md)
+Nvidia GPU Device Plugin See [Nvidia GPU Using Help](docs/guide/NvidiaGPU.md)
+
+Volcano vGPU Device Plugin
 
 ## FAQ
 
@@ -69,8 +72,3 @@ See  [FAQ.md](docs/guide/FAQ.md)
 ## License
 
 This project is licensed under the Apache-2.0 License.
-
-## Issues and Contributing
-
-* Please let me know by [Issues](https://github.com/pokerfaceSad/GPUMounter/issues/new) if you experience any problems.
-* [Pull requests](https://github.com/pokerfaceSad/GPUMounter/pulls) are very welcomed, if you have any ideas to make Device Mounter better.

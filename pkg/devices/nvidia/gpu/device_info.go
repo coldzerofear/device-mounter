@@ -96,11 +96,9 @@ func (m *NvidiaGPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	return api.Wait, nil
 }
 
-func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 	var deviceInfos []api.DeviceInfo
 	var gpus []*NvidiaGPU
-	// TODO 将owner pod原本的设备也带上
-	resources, _ := m.GetPodGPUResources(ownerPod.Name, ownerPod.Namespace)
 	for _, slavePod := range slavePods {
 		resources, err := m.GetPodGPUResources(slavePod.Name, slavePod.Namespace)
 		if err != nil {
@@ -122,8 +120,9 @@ func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod 
 			},
 		})
 	}
+	ownerGPUResources, _ := m.GetContainerGPUResources(ownerPod.Name, ownerPod.Namespace, container.Name)
 	// TODO 原始pod上没有gpu则挂载gpu驱动相关设备文件
-	if !(len(resources) > 0) {
+	if !(len(ownerGPUResources) > 0) {
 		// nvidiactl c 195:255
 		deviceInfos = append(deviceInfos, api.DeviceInfo{
 			DeviceFilePath: NVIDIA_NVIDIACTL_FILE_PATH,
@@ -235,7 +234,7 @@ func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ *ut
 	return nil
 }
 
-func (m *NvidiaGPUMounter) RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *NvidiaGPUMounter) RecycledPodResources(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
 	slavePodKeys := make([]types.NamespacedName, len(slavePods))
 	for i, slavePod := range slavePods {
 		slavePodKeys[i] = types.NamespacedName{

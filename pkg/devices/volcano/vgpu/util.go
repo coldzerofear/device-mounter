@@ -255,14 +255,18 @@ func DeviceRunningProcessFunc(uuid string, f func(process nvml.ProcessInfo)) err
 		return fmt.Errorf("nvml DeviceGetComputeRunningProcesses error: %s", nvml.ErrorString(rt))
 	}
 	for _, process := range processes {
-		f(process)
+		if f != nil {
+			f(process)
+		}
 	}
 	processes, rt = dev.GetGraphicsRunningProcesses()
 	if rt != nvml.SUCCESS {
 		return fmt.Errorf("nvml DeviceGetGraphicsRunningProcesses error: %s", nvml.ErrorString(rt))
 	}
 	for _, process := range processes {
-		f(process)
+		if f != nil {
+			f(process)
+		}
 	}
 	return nil
 }
@@ -299,7 +303,7 @@ func MutationCacheFunc(cacheFile string, mutationFunc func(*sharedRegionT) error
 			err = syscall.Munmap(data)
 		}
 		if err != nil {
-			klog.Errorf("Munmap file % failed: %v", cacheFile, err)
+			klog.Errorf("Munmap file %s failed: %v", cacheFile, err)
 		}
 	}()
 	return mutationFunc(cacheConfig)
@@ -310,7 +314,7 @@ func ConvertUUID(devuuid string) uuid {
 	for i, b := range devuuid {
 		uuid.uuid[i] = byte(b)
 	}
-	uuid.uuid[len(devuuid)] = byte(0) // \0结尾
+	uuid.uuid[len(devuuid)] = byte(0) // c语言字符串\0结尾
 	return uuid
 }
 

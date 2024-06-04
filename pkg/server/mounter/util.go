@@ -215,12 +215,14 @@ func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, conta
 	for i, pod := range pods {
 		if pod.Annotations != nil && pod.Annotations[config.DeviceTypeAnnotationKey] == devType {
 			slavePods = append(slavePods, pods[i])
+		} else {
+			klog.V(4).Infoln("Skipped old slave pod:", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
 		}
 	}
 	return slavePods, nil
 }
 
-func (s *DeviceMounterImpl) CreateSlavePodPDB(ctx context.Context, slavePod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
+func (s *DeviceMounterImpl) CreateSlavePodDisruptionBudget(ctx context.Context, slavePod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
 	pdb := policyv1.PodDisruptionBudget{}
 	pdb.Name = slavePod.Name
 	pdb.Namespace = slavePod.Namespace
