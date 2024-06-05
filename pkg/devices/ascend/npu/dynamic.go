@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DynamicResourceName = common.ResourceNamePrefix + common.AiCoreResourceName // 独占模式
+	DynamicResourceName = common.ResourceNamePrefix + common.AiCoreResourceName // 动态资源
 )
 
 func CheckRequestDynamicResources(request map[v1.ResourceName]resource.Quantity) bool {

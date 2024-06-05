@@ -214,9 +214,9 @@ func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, conta
 		return nil, err
 	}
 	var slavePods []*v1.Pod
-	for i, pod := range pods {
+	for _, pod := range pods {
 		if pod.Annotations != nil && pod.Annotations[config.DeviceTypeAnnotationKey] == devType {
-			slavePods = append(slavePods, pods[i])
+			slavePods = append(slavePods, pod.DeepCopy())
 		} else {
 			klog.V(4).Infoln("Skipped old slave pod:", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
 		}
