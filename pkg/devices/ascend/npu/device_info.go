@@ -67,7 +67,9 @@ func (m *AscendNPUMounter) DeviceType() string {
 }
 
 func (m *AscendNPUMounter) CheckMountResources(_ *kubernetes.Clientset, node *v1.Node, _ *v1.Pod, _ *api.Container, request map[v1.ResourceName]resource.Quantity, _ map[string]string) (api.ResultCode, string, bool) {
-	if !CheckRequest910Resources(request) {
+	condition1 := CheckRequest910Resources(request)
+	condition2 := CheckRequestDynamicResources(request)
+	if !condition1 && !condition2 {
 		return api.ResultCode_Fail, "Request for resources error: unsupported resource types", false
 	}
 	if !util.CheckResourcesInNode(node, request) {
@@ -101,8 +103,8 @@ func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	return api.Wait, nil
 }
 
-func (m *AscendNPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
-	deviceInfos, err := m.GetSlavePodsDeviceInfo(slavePods, func(devId int) (api.DeviceInfo, error) {
+func (m *AscendNPUMounter) GetMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+	deviceInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
 		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
 		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
@@ -149,8 +151,8 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util
 	return nil
 }
 
-func (m *AscendNPUMounter) GetUnMountDeviceInfo(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
-	return m.GetSlavePodsDeviceInfo(slavePods, func(devId int) (api.DeviceInfo, error) {
+func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+	return m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
 		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
 		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)

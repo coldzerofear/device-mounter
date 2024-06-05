@@ -138,8 +138,15 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 变异
 	for i, slavePod := range slavePods {
 		deepCopy := slavePod.DeepCopy()
-		slavePods[i] = deepCopy
 		s.MutationPodFunc(req.GetDeviceType(), container, pod, deepCopy)
+		deepCopy, err = s.PatchPod(deepCopy, req.GetPatches())
+		if err != nil {
+			return &api.DeviceResponse{
+				Result:  api.ResultCode_Fail,
+				Message: err.Error(),
+			}, nil
+		}
+		slavePods[i] = deepCopy
 	}
 	// 创建slave pods
 	var slavePodKeys []types.NamespacedName

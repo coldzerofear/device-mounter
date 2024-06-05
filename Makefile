@@ -68,7 +68,7 @@ test: fmt vet ## Run tests.
 ##@ Build
 
 .PHONY: build
-build: fmt vet ## Build manager binary.
+build: fmt vet ## Build binary.
 	CGO_ENABLED=0 GOOS=$(GOOS) go build -o bin/apiserver cmd/apiserver/main.go
 	CGO_ENABLED=1 GOOS=$(GOOS) CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack" -o bin/mounter cmd/mounter/main.go
 
@@ -76,9 +76,9 @@ build: fmt vet ## Build manager binary.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
+docker-build: ## Build docker image.
 	$(CONTAINER_TOOL) build --build-arg TARGETARCH=$(DOCKER_ARCH_ARG) --build-arg TARGETOS=$(GOOS) -t ${IMG} .
 
 .PHONY: docker-push
-docker-push: ## Push docker image with the manager.
+docker-push: ## Push docker image.
 	$(CONTAINER_TOOL) push ${IMG}

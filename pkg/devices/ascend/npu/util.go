@@ -23,8 +23,6 @@ const (
 	//参数“ASCEND_VISIBLE_DEVICES”指定用于切分的物理NPU设备。
 	AscendVNPUSpecsEnv = "ASCEND_VNPU_SPECS"
 
-	ResourceNamePrefix = "huawei.com"
-
 	ASCEND_DEVICE_FILE_PREFIX   = "/dev/davinci"
 	ASCEND_DAVINCI_MANAGER_PATH = "/dev/davinci_manager"
 	ASCEND_DEVMM_SVM_FILE_PATH  = "/dev/devmm_svm"

@@ -2,11 +2,13 @@ package mounter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
@@ -237,6 +239,33 @@ func (s *DeviceMounterImpl) CreateSlavePodDisruptionBudget(ctx context.Context, 
 	pdb.Spec.Selector = &metav1.LabelSelector{MatchLabels: slavePod.Labels}
 	return s.KubeClient.PolicyV1().PodDisruptionBudgets(slavePod.Namespace).
 		Create(ctx, &pdb, metav1.CreateOptions{})
+}
+
+func (s *DeviceMounterImpl) PatchPod(pod *v1.Pod, patches []string) (*v1.Pod, error) {
+	if len(patches) == 0 {
+		return pod, nil
+	}
+	klog.V(3).Infof("patching target pod patches: %+v", patches)
+	marshalledPod, err := json.Marshal(pod)
+	if err != nil {
+		return pod, fmt.Errorf("JSON serialization failed: %v", err)
+	}
+	jsonPatch := "[\n" + strings.Join(patches, ",\n") + "\n]"
+	patch, err := jsonpatch.DecodePatch([]byte(jsonPatch))
+	if err != nil {
+		return pod, fmt.Errorf("Cannot decode pod patches %s: %v", jsonPatch, err)
+	}
+	modifiedMarshalledPod, err := patch.Apply(marshalledPod)
+	if err != nil {
+		return pod, fmt.Errorf("Failed to apply patch for Pod %s: %v", jsonPatch, err)
+	}
+	patchedPod := &v1.Pod{}
+	err = json.Unmarshal(modifiedMarshalledPod, patchedPod)
+	if err != nil {
+		return patchedPod, fmt.Errorf("Cannot unmarshal modified marshalled Pod %s: %v", string(modifiedMarshalledPod), err)
+	}
+	klog.V(4).Infof("Patching target pod completed. Modified pod: %s", string(modifiedMarshalledPod))
+	return patchedPod, nil
 }
 
 func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Container, ownerPod, mutaPod *v1.Pod) {

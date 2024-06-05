@@ -27,7 +27,7 @@ func TestDeviceMounterServer(t *testing.T) {
 			}
 		}()
 		defer s.GracefulStop()
-		time.Sleep(10 * time.Second)
+		time.Sleep(5 * time.Second)
 		log.Println("DeviceMounterServer start successfully")
 	})
 }
@@ -57,7 +57,7 @@ func TestDeviceMounterUnixServer(t *testing.T) {
 			}
 		}()
 		defer s.GracefulStop()
-		time.Sleep(10 * time.Second)
+		time.Sleep(5 * time.Second)
 		log.Println("DeviceMounterUnixServer start successfully")
 	})
 }

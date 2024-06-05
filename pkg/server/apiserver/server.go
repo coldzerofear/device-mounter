@@ -94,6 +94,7 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		Container:      cont,
 		DeviceType:     params.deviceType,
 		TimeoutSeconds: params.timeoutSeconds,
+		Patches:        params.Patches,
 	})
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)

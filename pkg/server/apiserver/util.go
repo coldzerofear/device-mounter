@@ -18,6 +18,7 @@ import (
 type requestMountBody struct {
 	Resources   map[string]string `json:"resources"`
 	Annotations map[string]string `json:"annotations,omitempty"`
+	Patches     []string          `json:"patches,omitempty"`
 }
 
 type requestMountParams struct {

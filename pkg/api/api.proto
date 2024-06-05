@@ -23,6 +23,7 @@ message MountDeviceRequest {
   string              device_type     = 6;
   bool                is_entire_mount = 7;
   uint32              timeout_seconds = 8;
+  repeated string     patches         = 9;
 }
 
 enum ResultCode {
