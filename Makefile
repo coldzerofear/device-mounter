@@ -5,7 +5,15 @@ GOOS ?= linux
 ARCH ?= $(shell uname -m)
 ifeq ($(ARCH), x86_64)
 DOCKER_ARCH_ARG = amd64
+else ifeq ($(ARCH), x64)
+DOCKER_ARCH_ARG = amd64
 else ifeq ($(ARCH), aarch64)
+DOCKER_ARCH_ARG = arm64
+else ifeq ($(ARCH), aarch64_be)
+DOCKER_ARCH_ARG = arm64
+else ifeq ($(ARCH), armv8b)
+DOCKER_ARCH_ARG = arm64
+else ifeq ($(ARCH), armv8l)
 DOCKER_ARCH_ARG = arm64
 else
 $(error Unsupported architecture: $(ARCH))

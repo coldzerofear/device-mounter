@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -292,13 +293,17 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
+var cacheLock sync.Mutex
+
 func MutationCacheFunc(cacheFile string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
 	cacheConfig, data, err := mmapVGPUCacheConfig(cacheFile)
 	if err != nil {
 		return err
 	}
+	cacheLock.Lock()
 	defer func() {
+		cacheLock.Unlock()
 		if data != nil {
 			err = syscall.Munmap(data)
 		}
