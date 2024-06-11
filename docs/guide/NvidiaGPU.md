@@ -57,7 +57,7 @@ CoreDNS is running at https://{cluster-ip}:6443/api/v1/namespaces/kube-system/se
 
 ```shell
 curl --location \
---request PUT 'http://{cluster-ip}:6443/apis/device-mounter.io/v1alpha1/namespaces/default/pods/gpu-pod/mount?device_type=NVIDIA_GPU&container=cuda-container&wait_second=30' \
+--request PUT 'https://{cluster-ip}:6443/apis/device-mounter.io/v1alpha1/namespaces/default/pods/gpu-pod/mount?device_type=NVIDIA_GPU&container=cuda-container&wait_second=30' \
 --header 'Authorization: bearer token...' \
 --data '{"resources": {"nvidia.com/gpu": "1"}}' 
 ```
@@ -69,7 +69,7 @@ $ kubectl exec -it gpu-pod -- nvidia-smi -L
 GPU 0: Tesla V100-PCIE-32GB (UUID: GPU-f61ffc1a-9e61-1c0e-2211-4f8f252fe7bc)
 ```
 
-#### 2. remove GPU
+#### 2. remove all GPU
 
 `PUT /apis/device-mounter.io/v1alpha1/namespaces/{namespace}/pods/{name}/unmount`
 

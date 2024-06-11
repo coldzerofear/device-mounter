@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"unsafe"
 
@@ -15,6 +14,7 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/api/v1alpha1"
 	"k8s-device-mounter/pkg/client"
+	"k8s-device-mounter/pkg/util/lock"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
@@ -293,17 +293,15 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
-var cacheLock sync.Mutex
-
 func MutationCacheFunc(cacheFile string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
 	cacheConfig, data, err := mmapVGPUCacheConfig(cacheFile)
 	if err != nil {
 		return err
 	}
-	cacheLock.Lock()
+	lock.Lock(cacheFile)
 	defer func() {
-		cacheLock.Unlock()
+		lock.Unlock(cacheFile)
 		if data != nil {
 			err = syscall.Munmap(data)
 		}

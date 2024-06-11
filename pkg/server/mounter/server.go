@@ -9,7 +9,7 @@ import (
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
-	"k8s-device-mounter/pkg/devices"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
@@ -83,7 +83,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 
 	// 校验设备类型
-	deviceMounter, ok := devices.RegisterDeviceMounter[req.GetDeviceType()]
+	deviceMounter, ok := framework.RegisterDeviceMounter[req.GetDeviceType()]
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
@@ -355,7 +355,7 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 		}, nil
 	}
 	// 校验设备类型
-	deviceMounter, ok := devices.RegisterDeviceMounter[req.GetDeviceType()]
+	deviceMounter, ok := framework.RegisterDeviceMounter[req.GetDeviceType()]
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,

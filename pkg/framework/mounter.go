@@ -1,10 +1,7 @@
-package devices
+package framework
 
 import (
 	"k8s-device-mounter/pkg/api"
-	ascend_npu "k8s-device-mounter/pkg/devices/ascend/npu"
-	nvidia_gpu "k8s-device-mounter/pkg/devices/nvidia/gpu"
-	volcano_vgpu "k8s-device-mounter/pkg/devices/volcano/vgpu"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -13,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type DeviceMounterInterface interface {
+type DeviceMounter interface {
 	// 描述设备挂载器的类型
 	DeviceType() string
 
@@ -39,33 +36,20 @@ type DeviceMounterInterface interface {
 	RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName
 }
 
-// 检验是否实现接口
-var _ DeviceMounterInterface = &nvidia_gpu.NvidiaGPUMounter{}
-var _ DeviceMounterInterface = &volcano_vgpu.VolcanoVGPUMounter{}
-var _ DeviceMounterInterface = &ascend_npu.AscendNPUMounter{}
-
-var RegisterDeviceMounter = make(map[string]DeviceMounterInterface)
+var (
+	RegisterDeviceMounter = make(map[string]DeviceMounter)
+	AddDeviceMounterFuncs []func() (DeviceMounter, error)
+)
 
 // TODO 在这里注册设备挂载器
 func RegisrtyDeviceMounter() error {
-
-	if gpuMounter, err := nvidia_gpu.NewNvidiaGPUMounter(); err != nil {
-		klog.Errorf(err.Error())
-	} else {
-		RegisterDeviceMounter[gpuMounter.DeviceType()] = gpuMounter
+	for _, f := range AddDeviceMounterFuncs {
+		mounter, err := f()
+		if err != nil {
+			klog.Errorf(err.Error())
+			continue
+		}
+		RegisterDeviceMounter[mounter.DeviceType()] = mounter
 	}
-
-	if vgpuMounter, err := volcano_vgpu.NewVolcanoVGPUMounter(); err != nil {
-		klog.Errorf(err.Error())
-	} else {
-		RegisterDeviceMounter[vgpuMounter.DeviceType()] = vgpuMounter
-	}
-
-	if npuMounter, err := ascend_npu.NewAscendNPUMounter(); err != nil {
-		klog.Errorf(err.Error())
-	} else {
-		RegisterDeviceMounter[npuMounter.DeviceType()] = npuMounter
-	}
-
 	return nil
 }

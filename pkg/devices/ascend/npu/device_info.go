@@ -10,6 +10,7 @@ import (
 	"huawei.com/npu-exporter/v6/common-utils/hwlog"
 	"huawei.com/npu-exporter/v6/devmanager"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -23,7 +24,7 @@ type AscendNPUMounter struct {
 	*NPUCollector
 }
 
-func NewAscendNPUMounter() (*AscendNPUMounter, error) {
+func NewAscendNPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating AscendNPUMounter")
 	mounter := &AscendNPUMounter{}
 	hwLogConfig := hwlog.LogConfig{
@@ -152,25 +153,26 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util
 }
 
 func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
-	return m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
-		deviceId := strconv.Itoa(devId)
-		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
-		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
-		if err != nil {
-			return api.DeviceInfo{}, err
-		}
-		return api.DeviceInfo{
-			DeviceID:       deviceId,
-			DeviceFilePath: deviceFilePath,
-			Rule: devices.Rule{
-				Type:        devType,
-				Major:       int64(major),
-				Minor:       int64(minor),
-				Permissions: DEFAULT_CGROUP_PERMISSION,
-				Allow:       false,
-			},
-		}, nil
-	})
+	return nil, fmt.Errorf("Currently not supported for uninstalling Ascend NPUs")
+	//return m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
+	//	deviceId := strconv.Itoa(devId)
+	//	deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
+	//	major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
+	//	if err != nil {
+	//		return api.DeviceInfo{}, err
+	//	}
+	//	return api.DeviceInfo{
+	//		DeviceID:       deviceId,
+	//		DeviceFilePath: deviceFilePath,
+	//		Rule: devices.Rule{
+	//			Type:        devType,
+	//			Major:       int64(major),
+	//			Minor:       int64(minor),
+	//			Permissions: DEFAULT_CGROUP_PERMISSION,
+	//			Allow:       false,
+	//		},
+	//	}, nil
+	//})
 }
 
 func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {

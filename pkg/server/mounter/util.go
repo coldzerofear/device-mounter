@@ -14,7 +14,7 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/devices"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -129,7 +129,7 @@ func RecyclingPods(ctx context.Context, kubeClient *kubernetes.Clientset, slaveP
 
 func WaitSlavePodsReady(ctx context.Context,
 	podLister listerv1.PodLister, kubeClient *kubernetes.Clientset,
-	deviceMounter devices.DeviceMounterInterface, timeoutSecond time.Duration,
+	deviceMounter framework.DeviceMounter, timeoutSecond time.Duration,
 	slavePodKeys []types.NamespacedName) ([]*v1.Pod, []*v1.Pod, api.ResultCode, error) {
 
 	//readySlavePods := make([]*v1.Pod, len(slavePodNames))

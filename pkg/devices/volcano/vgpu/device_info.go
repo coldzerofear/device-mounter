@@ -11,6 +11,7 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/config"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -22,7 +23,7 @@ import (
 
 type VolcanoVGPUMounter struct{}
 
-func NewVolcanoVGPUMounter() (*VolcanoVGPUMounter, error) {
+func NewVolcanoVGPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating VolcanoVGPUMounter")
 	mounter := &VolcanoVGPUMounter{}
 	if !mounter.CheckDeviceEnvironment() {

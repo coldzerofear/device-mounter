@@ -18,6 +18,7 @@ K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove dev
 * Kubernetes v1.22+ (other version not tested)
 * Docker / Containerd (other version not tested)
 * runc based container runtime
+* cert-manager (Ensure that certificate manager is installed in the cluster and will be used to distribute self signed certificates)
 
 ## Supported devices
 
@@ -32,6 +33,8 @@ K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove dev
 
 
 ## Deploy
+
+* Installing Cert Manager. [GitHub](https://github.com/cert-manager/cert-manager)
 
 * label nodes with `device-mounter=enable`
 
@@ -61,9 +64,9 @@ kubectl delete -f deploy/device-mounter-daemonset.yaml
 
 ## Quick Start
 
-Nvidia GPU Device Plugin See [Nvidia GPU Using Help](docs/guide/NvidiaGPU.md)
+Nvidia GPU Device Plugin. See [Nvidia_GPU Using Help](docs/guide/NvidiaGPU.md)
 
-Volcano vGPU Device Plugin
+Volcano vGPU Device Plugin. See [Volcano_VGPU Using Help](docs/guide/VolcanoVGPU.md)
 
 ## FAQ
 

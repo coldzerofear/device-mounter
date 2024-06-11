@@ -15,8 +15,10 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/devices"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/server/mounter"
+	// init device mounter
+	_ "k8s-device-mounter/pkg/devices"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -99,12 +101,12 @@ func main() {
 	}
 
 	// 注册设备挂载器
-	klog.Infoln("Register Device Mounter...")
-	if err := devices.RegisrtyDeviceMounter(); err != nil {
+	klog.Infoln("Registering Device Mounter...")
+	if err := framework.RegisrtyDeviceMounter(); err != nil {
 		klog.Exit(err.Error())
 	}
 	var deviceTypes []string
-	for _, mount := range devices.RegisterDeviceMounter {
+	for _, mount := range framework.RegisterDeviceMounter {
 		deviceTypes = append(deviceTypes, mount.DeviceType())
 	}
 	klog.Infoln("Successfully registered mounts include", deviceTypes)

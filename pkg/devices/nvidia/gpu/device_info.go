@@ -6,6 +6,7 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -19,7 +20,7 @@ type NvidiaGPUMounter struct {
 	*GPUCollector
 }
 
-func NewNvidiaGPUMounter() (*NvidiaGPUMounter, error) {
+func NewNvidiaGPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating NvidiaGPUMounter")
 	mounter := &NvidiaGPUMounter{}
 	if !mounter.CheckDeviceEnvironment() {
