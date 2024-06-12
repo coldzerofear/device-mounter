@@ -1,7 +1,5 @@
 # K8s Device Mounter
 
-![K8s Device Mounter License](https://img.shields.io/github/license/pokerfaceSad/GPUMounter.svg)  ![GPUMounter master CI badge](https://github.com/pokerfaceSad/GPUMounter/workflows/GPUMounter-master%20CI/badge.svg)  ![GPUMounter worker CI badge](https://github.com/pokerfaceSad/GPUMounter/workflows/GPUMounter-worker%20CI/badge.svg)
-
 K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove device resources running Pods.
 
 <div align="center"> <img src="docs/images/SchematicDiagram.png" alt="Schematic Diagram Of Device Dynamic Mount"  /> </div>

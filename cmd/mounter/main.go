@@ -72,7 +72,6 @@ func main() {
 
 	klog.Infoln("Initialize the informer factory...")
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 5*time.Minute)
-	informerFactory.Core().V1().Pods().Informer()
 	podInformer := informerFactory.InformerFor(&v1.Pod{},
 		func(k kubernetes.Interface, duration time.Duration) cache.SharedIndexInformer {
 			return cache.NewSharedIndexInformer(cache.NewListWatchFromClient(
@@ -87,9 +86,9 @@ func main() {
 
 	klog.Infoln("Initialize the event recorder...")
 	kubeConfig := client.GetKubeConfig(KubeConfig)
-	evnetClient, _ := kubernetes.NewForConfig(kubeConfig)
+	eventClient, _ := kubernetes.NewForConfig(kubeConfig)
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: evnetClient.CoreV1().Events("")})
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "DeviceMounter"})
 
 	serverImpl := &mounter.DeviceMounterImpl{
