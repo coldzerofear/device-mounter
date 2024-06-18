@@ -322,22 +322,18 @@ loop:
 }
 
 func (s *DeviceMounterImpl) DeviceRuleSetFunc(cgroupPath string, r *configs.Resources) (closed func() error, rollback func() error, err error) {
-	if len(r.Devices) == 0 {
+	switch {
+	case len(r.Devices) == 0:
 		klog.V(3).Infoln("No device information to be mounted, skipping device permission settings")
-		goto skipDeviceSet
-	}
-	if s.IsCGroupV2 {
+		closed = util.NilCloser
+		rollback = util.NilCloser
+	case s.IsCGroupV2:
 		klog.V(3).Infoln("Use cgroupv2 ebpf device controller")
 		closed, rollback, err = util.SetDeviceRulesV2(cgroupPath, r)
-		return
-	} else {
+	default:
 		closed = util.NilCloser
 		rollback, err = util.SetDeviceRulesV1(cgroupPath, r)
-		return
 	}
-skipDeviceSet:
-	closed = util.NilCloser
-	rollback = util.NilCloser
 	return
 }
 
