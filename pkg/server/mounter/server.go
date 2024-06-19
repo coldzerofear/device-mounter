@@ -272,7 +272,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		}, nil
 	}
 
-	err = deviceMounter.MountDeviceInfoAfter(kubeClient, config, pod, container, readyPods)
+	err = deviceMounter.MountDeviceInfoAfter(kubeClient, *config, pod, container, readyPods)
 	if err != nil {
 		klog.Warningf("Device mounting follow-up action failed: %v", err)
 		// TODO 回滚设备文件，忽略失败
@@ -464,7 +464,7 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 			Message: fmt.Sprintf("Failed to set access permissions for cgroup devices: %v", err),
 		}, nil
 	}
-	err = deviceMounter.UnMountDeviceInfoAfter(kubeClient, config, pod, container, slavePods)
+	err = deviceMounter.UnMountDeviceInfoAfter(kubeClient, *config, pod, container, slavePods)
 	if err != nil {
 		klog.Warningf("Device unmounting follow-up action failed: %v", err)
 		// TODO 回滚设备文件，忽略失败

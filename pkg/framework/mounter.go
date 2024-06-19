@@ -24,14 +24,14 @@ type DeviceMounter interface {
 	// 获取挂载的设备信息
 	GetMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error)
 	// 挂载设备成功前的后续动作
-	MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, config *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error
+	MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, config util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error
 
 	// 获取卸载的设备信息
 	GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error)
 	// 获取在设备上运行的容器进程id
 	GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error)
 	// 卸载设备成功前的后续动作
-	UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, config *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error
+	UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, config util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error
 	// 返回卸载设备时要被回收的pod资源
 	RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName
 }

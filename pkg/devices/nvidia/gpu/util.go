@@ -14,4 +14,6 @@ const (
 	NVIDIA_NVIDIACTL_FILE_PATH        = "/dev/nvidiactl"
 	NVIDIA_NVIDIA_UVM_FILE_PATH       = "/dev/nvidia-uvm"
 	NVIDIA_NVIDIA_UVM_TOOLS_FILE_PATH = "/dev/nvidia-uvm-tools"
+
+	NVIDIA_VISIBLE_DEVICES_ENV = "NVIDIA_VISIBLE_DEVICES"
 )

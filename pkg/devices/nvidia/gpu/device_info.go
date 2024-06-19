@@ -72,6 +72,9 @@ func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, _ *api
 	var slavePods []*v1.Pod
 	for i := int64(0); i < gpuNumber; i++ {
 		pod := util.NewDeviceSlavePod(ownerPod, limits, annotations)
+		// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
+		env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
+		pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, env)
 		slavePods = append(slavePods, pod)
 	}
 	return slavePods, nil
@@ -169,7 +172,7 @@ func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod 
 	return deviceInfos, nil
 }
 
-func (m *NvidiaGPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *NvidiaGPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 
@@ -231,7 +234,7 @@ func (m *NvidiaGPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 }
 
 // 卸载设备成功前的后续动作
-func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 

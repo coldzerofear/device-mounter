@@ -148,7 +148,7 @@ func (m *AscendNPUMounter) GetMountDeviceInfo(kubeClient *kubernetes.Clientset, 
 	return deviceInfos, nil
 }
 
-func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 
@@ -175,25 +175,32 @@ func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset
 	//})
 }
 
+// TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
+//func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
+//	processInfos, err := m.GetRunningProcess()
+//	if err != nil {
+//		return nil, err
+//	}
+//	processes := sets.NewInt()
+//	for _, processInfo := range processInfos {
+//		for i := int32(0); i < processInfo.ProcNum; i++ {
+//			info := processInfo.DevProcArray[i]
+//			if util.ContainsInt(containerPids, int(info.Pid)) {
+//				processes.Insert(int(info.Pid))
+//			}
+//		}
+//	}
+//	return processes.List(), nil
+//}
+
 func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
-	processInfos, err := m.GetRunningProcess()
-	if err != nil {
-		return nil, err
-	}
 	processes := sets.NewInt()
-	for _, processInfo := range processInfos {
-		for i := int32(0); i < processInfo.ProcNum; i++ {
-			info := processInfo.DevProcArray[i]
-			if util.ContainsInt(containerPids, int(info.Pid)) {
-				processes.Insert(int(info.Pid))
-			}
-		}
-	}
+
 	return processes.List(), nil
 }
 
 // 卸载设备成功前的后续动作
-func (m *AscendNPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ *util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 

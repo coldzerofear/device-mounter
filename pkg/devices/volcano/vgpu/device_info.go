@@ -124,6 +124,9 @@ func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, cont
 	}
 	// TODO volcano vgpu 不考虑分多个pod申请资源
 	pod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
+	env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
+	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, env)
 	pod.Spec.SchedulerName = "volcano"
 	return []*v1.Pod{pod}, nil
 }
@@ -234,7 +237,7 @@ func (m *VolcanoVGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPo
 	return deviceInfos, nil
 }
 
-func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
+func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
 	for _, slavePod := range slavePods {
 		devMap := GetPodDevMap(slavePod)
 		klog.Infoln("slave", slavePod.Name, "devices ", devMap)
@@ -300,7 +303,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 				if _, err := os.Stat(VGPU_PRELOAD_PATH); err != nil {
 					return fmt.Errorf("Failed to detect file [%s]: %v", VGPU_PRELOAD_PATH, err)
 				}
-				// TODO 删除默认位置的vgpu缓存，防止挂载后 卸载 再挂载 失败
+				// TODO 删除默认位置的vgpu缓存，防止 挂载->卸载->再挂载 失败
 				_, _, _ = cfg.Execute("sh", "-c", "rm -f /tmp/cudevshr.cache")
 
 				cmd := []string{"mkdir -p /etc /usr/bin /tmp/vgpu " + VGPU_DIR_PATH}
@@ -411,7 +414,7 @@ func (m *VolcanoVGPUMounter) GetDeviceRunningProcesses(containerPids []int, devi
 }
 
 // 卸载设备成功前的后续动作
-func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg *util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
+func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, cfg util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error {
 	var tmpSlavePods []*v1.Pod
 	for i, slavePod := range slavePods {
 		if config.AnnoIsExpansion(slavePod.Annotations) {

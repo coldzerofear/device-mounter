@@ -20,6 +20,8 @@ spec:
     kind: Issuer
     name: device-mounter-apiserver-issuer
   secretName: device-mounter-apiserver-cert
+  duration: 8760h # 设置有效期为一年，即365天，每小时为1h
+  renewBefore: 360h # 可选，设置提前续期时间为15天，以确保平滑过渡
 ---
 apiVersion: v1
 kind: ConfigMap
