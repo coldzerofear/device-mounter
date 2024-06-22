@@ -86,7 +86,7 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		}
 	}
 	client := api.NewDeviceMountServiceClient(conn)
-	resp, err := client.MountDevice(context.TODO(), &api.MountDeviceRequest{
+	req := api.MountDeviceRequest{
 		PodName:        params.name,
 		PodNamespace:   params.namespace,
 		Resources:      params.Resources,
@@ -95,7 +95,8 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		DeviceType:     params.deviceType,
 		TimeoutSeconds: params.timeoutSeconds,
 		Patches:        params.Patches,
-	})
+	}
+	resp, err := client.MountDevice(request.Request.Context(), &req)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
@@ -219,13 +220,14 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 		cont = &api.Container{Name: params.container}
 	}
 	client := api.NewDeviceMountServiceClient(conn)
-	resp, err := client.UnMountDevice(context.TODO(), &api.UnMountDeviceRequest{
+	req := api.UnMountDeviceRequest{
 		PodName:      params.name,
 		PodNamespace: params.namespace,
 		Container:    cont,
 		Force:        params.force,
 		DeviceType:   params.deviceType,
-	})
+	}
+	resp, err := client.UnMountDevice(request.Request.Context(), &req)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return

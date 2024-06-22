@@ -26,7 +26,7 @@ type AscendNPUMounter struct {
 
 func NewAscendNPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating AscendNPUMounter")
-	mounter := &AscendNPUMounter{}
+
 	hwLogConfig := hwlog.LogConfig{
 		LogFileName:   "/var/log/mindx-dl/devicePlugin/devicePlugin.log",
 		LogLevel:      0,
@@ -35,16 +35,15 @@ func NewAscendNPUMounter() (framework.DeviceMounter, error) {
 		MaxLineLength: 1024,
 	}
 	if err := hwlog.InitRunLogger(&hwLogConfig, context.Background()); err != nil {
-		return mounter, fmt.Errorf("hwlog init failed, error is %v", err)
+		return nil, fmt.Errorf("hwlog init failed, error is %v", err)
 	}
 	dmgr, err := devmanager.AutoInit("")
 	if err != nil {
 		klog.Infof("Failed to initialize dcmi: %v.", err)
-		return mounter, fmt.Errorf("The current node environment does not have the operating conditions for AscendNPUMounter")
+		return nil, fmt.Errorf("The current node environment does not have the operating conditions for AscendNPUMounter")
 	}
-	mounter.NPUCollector = &NPUCollector{
-		DeviceManager: dmgr,
-	}
+	collector := NPUCollector{DeviceManager: dmgr}
+	mounter := &AscendNPUMounter{NPUCollector: &collector}
 	common.ParamOption = common.Option{
 		GetFdFlag:       false,
 		UseAscendDocker: true,

@@ -1,5 +1,5 @@
 # Build the mounter binary
-FROM ubuntu:20.04 as builder
+FROM registry.tydic.com/ubuntu/ubuntu:20.04 as builder
 
 ARG TARGETARCH=amd64
 ARG TARGETOS=linux
@@ -47,9 +47,11 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
     CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files'  \
     go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack" -o bin/mounter cmd/mounter/main.go
 
-FROM ubuntu:24.04
+FROM registry.tydic.com/ubuntu/ubuntu:24.04
 
 WORKDIR /
 
 COPY --from=builder /go/src/k8s-device-mounter/bin/apiserver .
 COPY --from=builder /go/src/k8s-device-mounter/bin/mounter .
+COPY scripts/ scripts/
+RUN chmod +x scripts/*

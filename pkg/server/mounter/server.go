@@ -3,6 +3,7 @@ package mounter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/opencontainers/runc/libcontainer/cgroups"
@@ -83,11 +84,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 
 	// 校验设备类型
-	deviceMounter, ok := framework.RegisterDeviceMounter[req.GetDeviceType()]
+	deviceType := strings.ToUpper(req.GetDeviceType())
+	deviceMounter, ok := framework.RegisterDeviceMounter[deviceType]
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
-			Message: "Unsupported device type",
+			Message: "Unsupported device type: " + req.GetDeviceType(),
 		}, nil
 	}
 
@@ -126,7 +128,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 
 	// 构建slave pods
 	// 查找历史同类型的slave pods
-	slavePods, _ := s.GetSlavePods(req.GetDeviceType(), pod, container)
+	slavePods, _ := s.GetSlavePods(deviceType, pod, container)
 	slavePods, err = deviceMounter.BuildDeviceSlavePodTemplates(pod, container, resources, req.GetAnnotations(), slavePods)
 	if err != nil {
 		klog.V(3).ErrorS(err, "Build device slave pods failed")
@@ -138,7 +140,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 变异
 	for i, slavePod := range slavePods {
 		deepCopy := slavePod.DeepCopy()
-		s.MutationPodFunc(req.GetDeviceType(), container, pod, deepCopy)
+		s.MutationPodFunc(deviceType, container, pod, deepCopy)
 		deepCopy, err = s.PatchPod(deepCopy, req.GetPatches())
 		if err != nil {
 			return &api.DeviceResponse{
@@ -296,7 +298,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 	_ = RecyclingPods(ctx, s.KubeClient, skipPodKeys)
 	// 挂载成功发送event
-	s.Recorder.Event(pod, v1.EventTypeNormal, "MountDevice", fmt.Sprintf("Successfully mounted %s device", req.GetDeviceType()))
+	s.Recorder.Event(pod, v1.EventTypeNormal, "MountDevice", fmt.Sprintf("Successfully mounted %s device", deviceType))
 	klog.Infoln("MountDevice Successfully")
 	return &api.DeviceResponse{
 		Result:  api.ResultCode_Success,
@@ -355,15 +357,16 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 		}, nil
 	}
 	// 校验设备类型
-	deviceMounter, ok := framework.RegisterDeviceMounter[req.GetDeviceType()]
+	deviceType := strings.ToUpper(req.GetDeviceType())
+	deviceMounter, ok := framework.RegisterDeviceMounter[deviceType]
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
-			Message: "Unsupported device type",
+			Message: "Unsupported device type: " + req.GetDeviceType(),
 		}, nil
 	}
 	// 查询当前设备类型的slave pods
-	slavePods, err := s.GetSlavePods(req.GetDeviceType(), pod, container)
+	slavePods, err := s.GetSlavePods(deviceType, pod, container)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get slave pods error")
 		return &api.DeviceResponse{
@@ -481,7 +484,7 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 	// TODO 暂时忽略删除失败 （有资源泄漏风险）
 	_ = RecyclingPods(ctx, s.KubeClient, recyclingPodkeys)
 	// 卸载成功发送event
-	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", fmt.Sprintf("Successfully uninstalled %s device", req.GetDeviceType()))
+	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", fmt.Sprintf("Successfully uninstalled %s device", deviceType))
 	klog.Infoln("UnMountDevice Successfully")
 	return &api.DeviceResponse{
 		Result:  api.ResultCode_Success,

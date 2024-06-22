@@ -16,7 +16,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
@@ -25,10 +24,10 @@ type VolcanoVGPUMounter struct{}
 
 func NewVolcanoVGPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating VolcanoVGPUMounter")
-	mounter := &VolcanoVGPUMounter{}
-	if !mounter.CheckDeviceEnvironment() {
-		return mounter, fmt.Errorf("The current node environment does not have the operating conditions for VolcanoVGPUMounter")
+	if !checkDeviceEnvironment() {
+		return nil, fmt.Errorf("The current node environment does not have the operating conditions for VolcanoVGPUMounter")
 	}
+	mounter := &VolcanoVGPUMounter{}
 	klog.Infoln("Successfully created VolcanoVGPUMounter")
 	return mounter, nil
 }
@@ -39,7 +38,7 @@ func (m *VolcanoVGPUMounter) DeviceType() string {
 }
 
 // 检查节点设备环境 如环境不允许则不启动挂载器
-func (m *VolcanoVGPUMounter) CheckDeviceEnvironment() bool {
+func checkDeviceEnvironment() bool {
 	if rt := nvml.Init(); rt != nvml.SUCCESS {
 		klog.Infof("Failed to initialize NVML: %s.", nvml.ErrorString(rt))
 		klog.Infof("If this is a GPU node, did you set the docker default runtime to `nvidia`?")
@@ -72,29 +71,26 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 	}
 
 	expansion := config.AnnoIsExpansion(annotations)
-	devStr, ok := ownerPod.Annotations[AssignedIDsAnnotations]
-	if ok && expansion {
-		podDevices := decodePodDevices(devStr)
-		usedUUID := sets.NewString()
-		for _, devices := range podDevices {
-			for _, device := range devices {
-				if device.CtrIdx == container.Index {
-					usedUUID.Insert(device.UUID)
-				}
-			}
-		}
+	devs, hasVGPU := ownerPod.Annotations[AssignedIDsAnnotations]
+	switch {
+	case hasVGPU && expansion:
+		podDevices := decodePodDevices(devs)
+		usedUUIDs := getDevicesUUID(podDevices, container)
 		quantity := request[VolcanoVGPUNumber]
-		if quantity.Value() > int64(len(usedUUID)) {
+		if quantity.Value() > int64(len(usedUUIDs)) {
 			return api.ResultCode_Fail, "The requested resource count exceeds the target container resource count and cannot be expanded", false
 		}
-	} else if expansion {
-		return api.ResultCode_Fail, "The target container does not have vgpu resources and cannot be expanded", false
-	}
-
-	nameStr := ownerPod.Annotations[InitVGPUAnnotations]
-	ctrNames := strings.Split(strings.TrimSpace(nameStr), ",")
-	if util.ContainsString(ctrNames, container.Name) {
-		return api.ResultCode_Fail, "The target container has initialized the vgpu and cannot be mounted again", false
+	case expansion:
+		if _, err := os.Stat(GetVGPUCacheFileDir(ownerPod, container)); err != nil {
+			return api.ResultCode_Fail, "The target container does not have vgpu resources and cannot be expanded", false
+		}
+	default:
+		// 非扩展请求校验容器是否初始化过vGPU设备
+		names := ownerPod.Annotations[InitVGPUAnnotations]
+		ctrNames := strings.Split(strings.TrimSpace(names), ",")
+		if util.ContainsString(ctrNames, container.Name) {
+			return api.ResultCode_Fail, "The target container has initialized the vgpu and cannot be mounted again", false
+		}
 	}
 
 	return api.ResultCode_Success, "", true
@@ -103,25 +99,42 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 // 构建要创建的奴隶pod模板
 func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations map[string]string, slavePods []*v1.Pod) ([]*v1.Pod, error) {
 	var podDevices []ContainerDevices
+	expansion := config.AnnoIsExpansion(annotations)
+	str, hasVGPU := ownerPod.Annotations[AssignedIDsAnnotations]
+	podDevices = append(podDevices, decodePodDevices(str)...)
 
-	if str, ok := ownerPod.Annotations[AssignedIDsAnnotations]; ok {
-		podDevices = append(podDevices, decodePodDevices(str)...)
-		if config.AnnoIsExpansion(annotations) {
-			// 扩容 要指定slave pod调度到扩容的设备上
-			usedUUIDs := getDevicesUUID(podDevices, container)
-			annotations[GPUUseUUID] = strings.Join(usedUUIDs, ",")
-		} else {
-			// 挂载新设备 要排除掉容器原本已分配的设备 和 以往挂载过的设备
-			for _, oldSlavePod := range slavePods {
-				devs := decodePodDevices(oldSlavePod.Annotations[AssignedIDsAnnotations])
-				podDevices = append(podDevices, devs...)
-			}
-			usedUUIDs := getDevicesUUID(podDevices, container)
-			if len(usedUUIDs) > 0 {
-				annotations[GPUNoUseUUID] = strings.Join(usedUUIDs, ",")
-			}
+	switch {
+	case expansion && hasVGPU:
+		// TODO 为请求了vGPU的容器扩容, 确保slave pod调度到指定的设备上
+		usedUUIDs := getDevicesUUID(podDevices, container)
+		annotations[GPUUseUUID] = strings.Join(usedUUIDs, ",")
+	case expansion:
+		// TODO 为热挂载的vGPU扩容， 确保slave pod调度到热挂的vGPU设备上
+		for _, slavePod := range slavePods {
+			annos := slavePod.Annotations[AssignedIDsAnnotations]
+			podDevices = append(podDevices, decodePodDevices(annos)...)
+		}
+		usedUUIDs := getDevicesUUID(podDevices, &api.Container{Index: 0})
+		if len(usedUUIDs) == 0 {
+			return nil, fmt.Errorf("Unable to find scalable vGPU devices")
+		}
+		quantity := request[VolcanoVGPUNumber]
+		if quantity.Value() > int64(len(usedUUIDs)) {
+			return nil, fmt.Errorf("The number of requested devices [%s] exceeds the number of expandable devices", VolcanoVGPUNumber)
+		}
+		annotations[GPUUseUUID] = strings.Join(usedUUIDs, ",")
+	default:
+		// TODO 挂载新设备，需要排除掉已经挂载过的旧设备，防止slave pod调度错误
+		for _, oldSlavePod := range slavePods {
+			devs := decodePodDevices(oldSlavePod.Annotations[AssignedIDsAnnotations])
+			podDevices = append(podDevices, devs...)
+		}
+		usedUUIDs := getDevicesUUID(podDevices, container)
+		if len(usedUUIDs) > 0 {
+			annotations[GPUNoUseUUID] = strings.Join(usedUUIDs, ",")
 		}
 	}
+
 	// TODO volcano vgpu 不考虑分多个pod申请资源
 	pod := util.NewDeviceSlavePod(ownerPod, request, annotations)
 	// TODO 让创建出来的slave pod只占用gpu，不包含设备文件

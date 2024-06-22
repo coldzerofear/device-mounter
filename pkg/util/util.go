@@ -1,8 +1,11 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 )
 
 func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.ConditionFunc) error {
@@ -175,4 +179,23 @@ func GetDeviceFileVersion(deviceFile string) (uint32, uint32, error) {
 	major := unix.Major(stat.Rdev) // 主设备号
 	minor := unix.Minor(stat.Rdev) // 次设备号
 	return major, minor, nil
+}
+
+func ExecDynamicBindVolume(containerPid int, hostPath, containerPath string) error {
+	scriptFile := "/scripts/dynamic_bind_volume.sh"
+	if env, ok := os.LookupEnv("DYNAMIC_BIND_VOLUME_SCRIPT"); ok {
+		scriptFile = env
+	}
+	cmd := exec.Command(scriptFile, strconv.Itoa(containerPid), hostPath, containerPath)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		klog.Errorln("Failed to perform dynamic volume binding:", cmd)
+		klog.Errorln("Std Output:", stdout)
+		klog.Errorln("Err Output:", stderr)
+		return err
+	}
+	return nil
 }

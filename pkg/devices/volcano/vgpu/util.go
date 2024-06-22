@@ -115,8 +115,8 @@ type sharedRegionT struct {
 	priority          int32
 }
 
-func mmapVGPUCacheConfig(filePath string) (*sharedRegionT, []byte, error) {
-	files, err := ioutil.ReadDir(filePath)
+func mmapVGPUCacheConfig(cacheDir string) (*sharedRegionT, []byte, error) {
+	files, err := ioutil.ReadDir(cacheDir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -126,19 +126,19 @@ func mmapVGPUCacheConfig(filePath string) (*sharedRegionT, []byte, error) {
 	}
 	for _, file := range files {
 		// 跳过hook的动态链接库
-		if strings.Contains(file.Name(), "libvgpu.so") {
-			continue
-		}
+		//if strings.Contains(file.Name(), "libvgpu.so") {
+		//	continue
+		//}
 		// 跳过非cache文件
 		if !strings.Contains(file.Name(), ".cache") {
 			continue
 		}
-		cacheFilePath := fmt.Sprintf("%s/%s", filePath, file.Name())
-		cacheFile, data, err := mmapVGPUCacheFile(cacheFilePath)
+		cacheFilePath := fmt.Sprintf("%s/%s", cacheDir, file.Name())
+		cache, data, err := mmapVGPUCacheFile(cacheFilePath)
 		if err != nil {
 			klog.Errorln(err)
 		} else {
-			return cacheFile, data, nil
+			return cache, data, nil
 		}
 	}
 	return nil, nil, errors.New("cannot find vgpu cache file")
@@ -293,20 +293,20 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
-func MutationCacheFunc(cacheFile string, mutationFunc func(*sharedRegionT) error) error {
+func MutationCacheFunc(cacheDir string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
-	cacheConfig, data, err := mmapVGPUCacheConfig(cacheFile)
+	cacheConfig, data, err := mmapVGPUCacheConfig(cacheDir)
 	if err != nil {
 		return err
 	}
-	lock.Lock(cacheFile)
+	lock.Lock(cacheDir)
 	defer func() {
-		lock.Unlock(cacheFile)
+		lock.Unlock(cacheDir)
 		if data != nil {
 			err = syscall.Munmap(data)
 		}
 		if err != nil {
-			klog.Errorf("Munmap file %s failed: %v", cacheFile, err)
+			klog.Errorf("Munmap cache file failed[%s]: %v", cacheDir, err)
 		}
 	}()
 	return mutationFunc(cacheConfig)

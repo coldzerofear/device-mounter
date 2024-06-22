@@ -22,16 +22,14 @@ type NvidiaGPUMounter struct {
 
 func NewNvidiaGPUMounter() (framework.DeviceMounter, error) {
 	klog.Infoln("Creating NvidiaGPUMounter")
-	mounter := &NvidiaGPUMounter{}
-	if !mounter.CheckDeviceEnvironment() {
-		return mounter, fmt.Errorf("The current node environment does not have the operating conditions for NvidiaGPUMounter")
+	if !checkDeviceEnvironment() {
+		return nil, fmt.Errorf("The current node environment does not have the operating conditions for NvidiaGPUMounter")
 	}
-
 	collector, err := NewGPUCollector()
 	if err != nil {
-		return mounter, err
+		return nil, err
 	}
-	mounter.GPUCollector = collector
+	mounter := &NvidiaGPUMounter{GPUCollector: collector}
 	klog.Infoln("Successfully created NvidiaGPUMounter")
 	return mounter, nil
 }
@@ -40,7 +38,7 @@ func (m *NvidiaGPUMounter) DeviceType() string {
 	return "NVIDIA_GPU"
 }
 
-func (m *NvidiaGPUMounter) CheckDeviceEnvironment() bool {
+func checkDeviceEnvironment() bool {
 	if rt := nvml.Init(); rt != nvml.SUCCESS {
 		klog.Infof("Failed to initialize NVML: %s.", nvml.ErrorString(rt))
 		klog.Infof("If this is a GPU node, did you set the docker default runtime to `nvidia`?")
