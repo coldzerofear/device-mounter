@@ -6,14 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
-	apierror "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,30 +40,11 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		}, nil
 	}
 	// 查询pod
-	pod, err := client.RetryGetPodByName(s.KubeClient, req.PodName, req.PodNamespace, 3)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
-			return &api.DeviceResponse{
-				Result:  api.ResultCode_NotFound,
-				Message: err.Error(),
-			}, nil
-		} else {
-			klog.ErrorS(err, "Get pod failed", "name", req.PodName, "namespace", req.PodNamespace)
-			return &api.DeviceResponse{
-				Result:  api.ResultCode_Fail,
-				Message: err.Error(),
-			}, nil
-		}
+	pod, resp := s.GetTargetPod(req.PodName, req.PodNamespace)
+	if resp != nil {
+		return resp, nil
 	}
-	klog.V(3).InfoS("Get Pod success", "name", req.PodName, "namespace", req.PodNamespace)
-	// 校验pod节点
-	if pod.Spec.NodeName != s.NodeName {
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Pod is not running on the node %s", s.NodeName),
-		}, nil
-	}
+
 	// 校验容器是否存在
 	container, err := CheckPodContainer(pod, req.GetContainer())
 	if err != nil {
@@ -179,7 +158,6 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	if req.GetTimeoutSeconds() > 0 {
 		timeout = time.Duration(req.GetTimeoutSeconds())
 	}
-	time.Sleep(100 * time.Millisecond)
 	// 校验slave pods准备就绪
 	readyPods, skipPods, resCode, err := WaitSlavePodsReady(ctx,
 		s.PodLister, s.KubeClient, deviceMounter, timeout, slavePodKeys)
@@ -213,27 +191,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Message: fmt.Sprintf("Failed to detect mount device info: %v", err),
 		}, nil
 	}
-	// 获取容器cgroup路径
-	cgroupPath, err := s.GetCGroupPath(pod, container)
-	if err != nil {
-		klog.V(4).ErrorS(err, "Get cgroup path error")
+	// 获取目标容器的cgroup路径和pid
+	pids, cgroupPath, resp := s.GetContainerCGroupPathAndPids(pod, container)
+	if resp != nil {
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
 		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: err.Error(),
-		}, nil
-	}
-	klog.V(4).Infoln("current container cgroup path", cgroupPath)
-	pids, err := cgroups.GetAllPids(cgroupPath)
-	if err != nil {
-		klog.V(4).ErrorS(err, "Get container pids error")
-		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Error in obtaining container process id: %v", err),
-		}, nil
+		return resp, nil
 	}
 	klog.V(4).Infoln("current container pids", pids)
 
@@ -308,7 +271,6 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 
 func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountDeviceRequest) (*api.DeviceResponse, error) {
 	klog.V(4).Infoln("UnMountDevice Called", "Request", req)
-	// 查询pod
 	if err := CheckUnMountDeviceRequest(req); err != nil {
 		klog.V(4).Infoln(err.Error())
 		return &api.DeviceResponse{
@@ -316,30 +278,12 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 			Message: err.Error(),
 		}, nil
 	}
-	pod, err := client.RetryGetPodByName(s.KubeClient, req.PodName, req.PodNamespace, 3)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
-			return &api.DeviceResponse{
-				Result:  api.ResultCode_NotFound,
-				Message: err.Error(),
-			}, nil
-		} else {
-			klog.ErrorS(err, "Get pod failed", "name", req.PodName, "namespace", req.PodNamespace)
-			return &api.DeviceResponse{
-				Result:  api.ResultCode_Fail,
-				Message: err.Error(),
-			}, nil
-		}
+	// 查询pod
+	pod, resp := s.GetTargetPod(req.PodName, req.PodNamespace)
+	if resp != nil {
+		return resp, nil
 	}
-	klog.V(3).InfoS("Get pod success", "name", req.PodName, "namespace", req.PodNamespace)
-	// 校验pod节点
-	if pod.Spec.NodeName != s.NodeName {
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Pod is not running on the node %s", s.NodeName),
-		}, nil
-	}
+
 	// 校验容器是否存在
 	container, err := CheckPodContainer(pod, req.GetContainer())
 	if err != nil {
@@ -391,26 +335,14 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 			Message: fmt.Sprintf("Failed to detect uninstalled device info: %v", err),
 		}, nil
 	}
-	// 获取容器cgroup路径
-	cgroupPath, err := s.GetCGroupPath(pod, container)
-	if err != nil {
-		klog.V(4).ErrorS(err, "Get cgroup path error")
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: err.Error(),
-		}, nil
-	}
-	klog.V(4).Infoln("current container cgroup path", cgroupPath)
-	// 获取容器pid
-	pids, err := cgroups.GetAllPids(cgroupPath)
-	if err != nil {
-		klog.V(4).ErrorS(err, "Get container pids error")
-		return &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Error in obtaining container process id: %v", err),
-		}, nil
+	// 获取目标容器的cgroup路径和pid
+	pids, cgroupPath, resp := s.GetContainerCGroupPathAndPids(pod, container)
+	if resp != nil {
+		return resp, nil
 	}
 	klog.V(4).Infoln("current container pids", pids)
+
+	config := &util.Config{Target: pids[0], Mount: true}
 	processes, err := deviceMounter.GetDeviceRunningProcesses(pids, deviceInfos)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get device running processes error")
@@ -429,7 +361,7 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 	// kill processes
 	if len(processes) > 0 {
 		// TODO 暂且忽略失败的情况
-		if util.KillRunningProcesses(nil, processes) == nil {
+		if util.KillRunningProcesses(config, processes) == nil {
 			klog.V(3).Infoln("Successfully killed process")
 		}
 	}
@@ -454,8 +386,6 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 		}, nil
 	}
 	// 删除设备文件
-	config := &util.Config{Target: pids[0], Mount: true}
-
 	rollbackFiles, err := s.DeleteDeviceFiles(config, deviceInfos)
 	if err != nil {
 		// TODO 回滚设备文件，忽略失败

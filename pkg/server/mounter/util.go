@@ -10,6 +10,7 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
+	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
@@ -187,7 +188,7 @@ func WaitSlavePodsReady(ctx context.Context,
 		}
 		return true, nil
 	}
-	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeoutSecond*time.Second, true, condition)
+	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeoutSecond*time.Second, false, condition)
 	return readySlavePods, skipSlavePods, resCode, err
 }
 
@@ -379,4 +380,60 @@ func (s *DeviceMounterImpl) DeleteDeviceFiles(cfg *util.Config, devInfos []api.D
 		return err
 	}
 	return rollback, nil
+}
+
+func (s *DeviceMounterImpl) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, *api.DeviceResponse) {
+	// 获取容器cgroup路径
+	cgroupPath, err := s.GetCGroupPath(pod, container)
+	if err != nil {
+		klog.V(4).ErrorS(err, "Get cgroup path error")
+		return nil, cgroupPath, &api.DeviceResponse{
+			Result:  api.ResultCode_Fail,
+			Message: err.Error(),
+		}
+	}
+	klog.V(4).Infoln("current container cgroup path", cgroupPath)
+	pids, err := cgroups.GetAllPids(cgroupPath)
+	if err != nil {
+		klog.V(4).ErrorS(err, "Get container pids error")
+		return pids, cgroupPath, &api.DeviceResponse{
+			Result:  api.ResultCode_Fail,
+			Message: fmt.Sprintf("Error in obtaining container process id: %v", err),
+		}
+	}
+	if len(pids) == 0 {
+		return pids, cgroupPath, &api.DeviceResponse{
+			Result:  api.ResultCode_Fail,
+			Message: fmt.Sprintf("Process ID for target container not found"),
+		}
+	}
+	return pids, cgroupPath, nil
+}
+
+func (s *DeviceMounterImpl) GetTargetPod(name, namespace string) (*v1.Pod, *api.DeviceResponse) {
+	pod, err := client.RetryGetPodByName(s.KubeClient, name, namespace, 3)
+	if err != nil {
+		if apierror.IsNotFound(err) {
+			klog.ErrorS(err, "Not found pod", "name", name, "namespace", namespace)
+			return nil, &api.DeviceResponse{
+				Result:  api.ResultCode_NotFound,
+				Message: err.Error(),
+			}
+		} else {
+			klog.ErrorS(err, "Get pod failed", "name", name, "namespace", namespace)
+			return nil, &api.DeviceResponse{
+				Result:  api.ResultCode_Fail,
+				Message: err.Error(),
+			}
+		}
+	}
+	klog.V(3).InfoS("Get pod success", "name", name, "namespace", namespace)
+	// 校验pod节点
+	if pod.Spec.NodeName != s.NodeName {
+		return nil, &api.DeviceResponse{
+			Result:  api.ResultCode_Fail,
+			Message: fmt.Sprintf("Pod is not running on the node %s", s.NodeName),
+		}
+	}
+	return pod, nil
 }
