@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/emicklei/go-restful/v3"
-	"k8s-device-mounter/pkg/config"
 	authzv1 "k8s.io/api/authorization/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,14 +37,10 @@ type requestUnMountParams struct {
 	force      bool
 }
 
-func (s *service) GetDeviceMounterPodOnNode(nodeName string) (*v1.Pod, error) {
-	selector := labels.SelectorFromSet(labels.Set{
-		config.AppComponentLabelKey: "daemonset",
-		config.AppCreatedByLabelKey: "device-mounter-daemonset",
-		config.AppInstanceLabelKey:  "device-mounter-daemonset",
-	})
+func (s *service) GetMounterPodOnNodeName(nodeName string) (*v1.Pod, error) {
+
 	podList, err := s.kubeClient.CoreV1().Pods("kube-system").
-		List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
+		List(context.TODO(), metav1.ListOptions{LabelSelector: s.labelSelector.String()})
 	if err != nil {
 		return nil, fmt.Errorf("error getting device mounter Pod: %w", err)
 	}
@@ -64,6 +59,9 @@ func (s *service) GetDeviceMounterPodOnNode(nodeName string) (*v1.Pod, error) {
 	}
 	if mPod == nil {
 		return nil, fmt.Errorf("there is no device mounter on the target node %s", nodeName)
+	}
+	if mPod.Status.Phase != v1.PodRunning {
+		return nil, fmt.Errorf("target device mounter not in running state")
 	}
 	return mPod, nil
 }
@@ -145,4 +143,18 @@ outerLoop:
 	}
 
 	return extras, nil
+}
+
+func ParseLabelSelector(mounterSelector string) labels.Selector {
+	set := labels.Set{}
+	mounterSelector = strings.TrimSpace(mounterSelector)
+	for _, split := range strings.Split(mounterSelector, ",") {
+		strs := strings.Split(strings.TrimSpace(split), "=")
+		if len(strs) > 1 {
+			labelKey := strings.TrimSpace(strs[0])
+			labelValue := strings.TrimSpace(strs[1])
+			set[labelKey] = labelValue
+		}
+	}
+	return labels.SelectorFromSet(set)
 }

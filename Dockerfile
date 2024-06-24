@@ -53,5 +53,6 @@ WORKDIR /
 
 COPY --from=builder /go/src/k8s-device-mounter/bin/apiserver .
 COPY --from=builder /go/src/k8s-device-mounter/bin/mounter .
+
 COPY scripts/ scripts/
 RUN chmod +x scripts/*

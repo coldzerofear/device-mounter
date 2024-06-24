@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc"
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/authConfig"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
@@ -25,18 +25,32 @@ type APIService interface {
 	UnMountDevice(request *restful.Request, response *restful.Response)
 }
 
+type mounterSelector struct {
+	targetServerPort string
+	targetNamespace  string
+	labelSelector    labels.Selector
+}
+
 type service struct {
-	port       string
+	*mounterSelector
 	kubeClient *kubernetes.Clientset
 	authConfig authConfig.Reader
 }
 
-func NewService(kubeClient *kubernetes.Clientset, authConfig authConfig.Reader, bindPort string) APIService {
+func NewService(kubeClient *kubernetes.Clientset, authConfig authConfig.Reader,
+	mounterPort, mounterNamespace string, mounterLabelSelector labels.Selector) (APIService, error) {
+	if mounterLabelSelector == nil || mounterLabelSelector.Empty() {
+		return nil, fmt.Errorf("The label selector of the device mounter cannot be empty")
+	}
 	return &service{
-		port:       bindPort,
+		mounterSelector: &mounterSelector{
+			targetServerPort: mounterPort,
+			targetNamespace:  mounterNamespace,
+			labelSelector:    mounterLabelSelector,
+		},
 		kubeClient: kubeClient,
 		authConfig: authConfig,
-	}
+	}, nil
 }
 
 func (s *service) MountDevice(request *restful.Request, response *restful.Response) {
@@ -63,16 +77,12 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		return
 	}
-	mPod, err := s.GetDeviceMounterPodOnNode(pod.Spec.NodeName)
+	mPod, err := s.GetMounterPodOnNodeName(pod.Spec.NodeName)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	if mPod.Status.Phase != v1.PodRunning {
-		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("target device mounter not in running state"))
-		return
-	}
-	conn, err := grpc.Dial(mPod.Status.PodIP+s.port, grpc.WithInsecure())
+	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure())
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("failed to connect to device mounter: %v", err))
 		return
@@ -199,16 +209,12 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		return
 	}
-	mPod, err := s.GetDeviceMounterPodOnNode(pod.Spec.NodeName)
+	mPod, err := s.GetMounterPodOnNodeName(pod.Spec.NodeName)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	if mPod.Status.Phase != v1.PodRunning {
-		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("target device mounter not in running state"))
-		return
-	}
-	conn, err := grpc.Dial(mPod.Status.PodIP+s.port, grpc.WithInsecure())
+	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure())
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("failed to connect to device mounter: %v", err))
 		return

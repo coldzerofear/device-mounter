@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
@@ -142,29 +141,29 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Name:      slavePod.Name,
 			Namespace: slavePod.Namespace,
 		})
-		_, _ = s.CreateSlavePodDisruptionBudget(ctx, slavePod)
+		_, _ = s.CreatePodDisruptionBudget(ctx, slavePod)
 	}
 	if err != nil || len(slavePodKeys) == 0 {
 		// 创建失败 回收已创建的pod
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: "Device slave pod creation failed",
 		}, nil
 	}
 	klog.Infoln("Successfully created slave pods", slavePodKeys)
-	timeout := time.Duration(10) // 默认值 10 秒
+	timeoutSecond := uint32(10) // 默认值 10 秒
 	if req.GetTimeoutSeconds() > 0 {
-		timeout = time.Duration(req.GetTimeoutSeconds())
+		timeoutSecond = req.TimeoutSeconds
 	}
 	// 校验slave pods准备就绪
 	readyPods, skipPods, resCode, err := WaitSlavePodsReady(ctx,
-		s.PodLister, s.KubeClient, deviceMounter, timeout, slavePodKeys)
+		s.PodLister, s.KubeClient, deviceMounter, timeoutSecond, slavePodKeys)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Wait slave pods ready error")
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  resCode,
 			Message: err.Error(),
@@ -173,7 +172,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 如果此时没有ready的pod则返回错误
 	if len(readyPods) == 0 {
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: "Preparing device slave pod failed",
@@ -185,7 +184,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get mount device info error")
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: fmt.Sprintf("Failed to detect mount device info: %v", err),
@@ -195,7 +194,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	pids, cgroupPath, resp := s.GetContainerCGroupPathAndPids(pod, container)
 	if resp != nil {
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return resp, nil
 	}
 	klog.V(4).Infoln("current container pids", pids)
@@ -214,7 +213,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		// TODO 回滚设备权限，暂时忽略回滚失败的情况
 		_ = rollbackRules()
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: fmt.Sprintf("Failed to set access permissions for cgroup devices: %v", err),
@@ -230,7 +229,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		// TODO 回滚设备权限，暂时忽略回滚失败的情况
 		_ = rollbackRules()
 		// TODO 回收pod, 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: fmt.Sprintf("Failed to create devic files: %v", err),
@@ -245,7 +244,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 		// TODO 回滚设备权限，暂时忽略回滚失败的情况
 		_ = rollbackRules()
 		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		_ = RecyclingPods(ctx, s.KubeClient, slavePodKeys)
+		_ = GarbageCollectionPods(ctx, s.KubeClient, slavePodKeys)
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: fmt.Sprintf("Failed to mount device information after: %v", err),
@@ -259,7 +258,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Namespace: skipPod.Namespace,
 		}
 	}
-	_ = RecyclingPods(ctx, s.KubeClient, skipPodKeys)
+	_ = GarbageCollectionPods(ctx, s.KubeClient, skipPodKeys)
 	// 挂载成功发送event
 	s.Recorder.Event(pod, v1.EventTypeNormal, "MountDevice", fmt.Sprintf("Successfully mounted %s device", deviceType))
 	klog.Infoln("MountDevice Successfully")
@@ -410,9 +409,9 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 		}, nil
 	}
 	// 回收slave pod
-	recyclingPodkeys := deviceMounter.RecycledPodResources(kubeClient, pod, container, slavePods)
+	gcPodKeys := deviceMounter.CleanupPodResources(kubeClient, pod, container, slavePods)
 	// TODO 暂时忽略删除失败 （有资源泄漏风险）
-	_ = RecyclingPods(ctx, s.KubeClient, recyclingPodkeys)
+	_ = GarbageCollectionPods(ctx, s.KubeClient, gcPodKeys)
 	// 卸载成功发送event
 	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", fmt.Sprintf("Successfully uninstalled %s device", deviceType))
 	klog.Infoln("UnMountDevice Successfully")

@@ -113,26 +113,33 @@ func CheckUnMountDeviceRequest(req *api.UnMountDeviceRequest) error {
 	return nil
 }
 
-func RecyclingPods(ctx context.Context, kubeClient *kubernetes.Clientset, slavePodKeys []types.NamespacedName) error {
+// TODO 暂时忽略删除失败 （设备泄漏风险）
+func GarbageCollectionPods(ctx context.Context, kubeClient *kubernetes.Clientset, keys []types.NamespacedName) error {
 	var err error
-	for _, objKey := range slavePodKeys {
-		klog.Infoln("Recycling pod", objKey.String())
-		// TODO 暂时忽略删除失败 （设备泄漏风险）
-		if err1 := kubeClient.CoreV1().Pods(objKey.Namespace).
-			Delete(ctx, objKey.Name, metav1.DeleteOptions{
-				GracePeriodSeconds: pointer.Int64(0),
-			}); err1 != nil {
-			err = err1
+	options := metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64(0)}
+	for _, objKey := range keys {
+		klog.Infoln("Garbage collection pod", objKey.String())
+		if err = util.LoopRetry(3, 100*time.Millisecond, func() (bool, error) {
+			delErr := kubeClient.CoreV1().Pods(objKey.Namespace).Delete(ctx, objKey.Name, options)
+			if delErr != nil && !apierror.IsNotFound(delErr) {
+				klog.Errorln("Garbage collection pod failed", objKey.String())
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+			klog.Errorln(err)
 		}
 	}
 	return err
 }
 
-func WaitSlavePodsReady(ctx context.Context,
-	podLister listerv1.PodLister, kubeClient *kubernetes.Clientset,
-	deviceMounter framework.DeviceMounter, timeoutSecond time.Duration,
+func WaitSlavePodsReady(
+	ctx context.Context,
+	podLister listerv1.PodLister,
+	kubeClient *kubernetes.Clientset,
+	deviceMounter framework.DeviceMounter,
+	timeoutSecond uint32,
 	slavePodKeys []types.NamespacedName) ([]*v1.Pod, []*v1.Pod, api.ResultCode, error) {
-
 	//readySlavePods := make([]*v1.Pod, len(slavePodNames))
 
 	readySlavePods := make([]*v1.Pod, 0)
@@ -148,7 +155,7 @@ func WaitSlavePodsReady(ctx context.Context,
 					slavePod, err = client.RetryGetPodByName(kubeClient, slaveKey.Name, slaveKey.Namespace, 3)
 				}
 				if err != nil {
-					klog.V(3).ErrorS(err, "Get slave pod failed")
+					klog.V(3).ErrorS(err, "Get slave pod failed", "name", slaveKey.Name, "namespace", slaveKey.Namespace)
 					return false, err
 				}
 			}
@@ -188,7 +195,9 @@ func WaitSlavePodsReady(ctx context.Context,
 		}
 		return true, nil
 	}
-	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeoutSecond*time.Second, false, condition)
+
+	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond,
+		time.Duration(int64(timeoutSecond))*time.Second, false, condition)
 	return readySlavePods, skipSlavePods, resCode, err
 }
 
@@ -225,21 +234,20 @@ func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, conta
 	return slavePods, nil
 }
 
-func (s *DeviceMounterImpl) CreateSlavePodDisruptionBudget(ctx context.Context, slavePod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
+func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, ownerPod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
 	pdb := policyv1.PodDisruptionBudget{}
-	pdb.Name = slavePod.Name
-	pdb.Namespace = slavePod.Namespace
+	pdb.Name = ownerPod.Name
+	pdb.Namespace = ownerPod.Namespace
 	pdb.Labels = map[string]string{
 		config.AppComponentLabelKey: "k8s-device-mounter",
 		config.AppManagedByLabelKey: "k8s-device-mounter",
 	}
-	pdb.OwnerReferences = Owner(slavePod)
+	pdb.OwnerReferences = Owner(ownerPod)
 	// TODO 确保至少有1个Pod副本在任何中断期间都是可用的 (防止资源泄漏)
 	minAvailable := intstr.FromInt32(int32(1))
 	pdb.Spec.MinAvailable = &minAvailable
-	pdb.Spec.Selector = &metav1.LabelSelector{MatchLabels: slavePod.Labels}
-	return s.KubeClient.PolicyV1().PodDisruptionBudgets(slavePod.Namespace).
-		Create(ctx, &pdb, metav1.CreateOptions{})
+	pdb.Spec.Selector = &metav1.LabelSelector{MatchLabels: ownerPod.Labels}
+	return s.KubeClient.PolicyV1().PodDisruptionBudgets(ownerPod.Namespace).Create(ctx, &pdb, metav1.CreateOptions{})
 }
 
 func (s *DeviceMounterImpl) PatchPod(pod *v1.Pod, patches []string) (*v1.Pod, error) {
@@ -295,6 +303,8 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 		mutaPod.Spec.Containers[i].Image = config.DeviceSlaveContainerImageTag
 		mutaPod.Spec.Containers[i].ImagePullPolicy = config.DeviceSlaveImagePullPolicy
 	}
+	//mutaPod.Spec.Priority = nil
+	//mutaPod.Spec.PriorityClassName = ownerPod.Spec.PriorityClassName
 	mutaPod.Spec.TerminationGracePeriodSeconds = pointer.Int64(0)
 }
 

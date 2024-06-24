@@ -9,10 +9,12 @@ import (
 	"k8s-device-mounter/pkg/api/v1alpha1"
 	"k8s-device-mounter/pkg/authConfig"
 	"k8s-device-mounter/pkg/client"
+	"k8s-device-mounter/pkg/config"
 	"k8s-device-mounter/pkg/filewatch"
 	"k8s-device-mounter/pkg/server/apiserver"
 	"k8s-device-mounter/pkg/tlsconfig"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 )
 
@@ -26,16 +28,21 @@ const (
 )
 
 var (
-	KubeConfig      = ""
-	TCPBindPort     = ":8768"
-	MounterBindPort = ":1200"
+	KubeConfig       = ""
+	TCPBindPort      = ":8768"
+	MounterBindPort  = ":1200"
+	MounterNamespace = "kube-system"
+	MounterSelector  = ""
 )
 
 func initFlags() {
 	klog.InitFlags(nil)
 	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
-	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default :8768)")
-	flag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service (default :1200)")
+	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default \":8768\")")
+
+	flag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service (default \":1200\")")
+	flag.StringVar(&MounterNamespace, "mounter-pod-namespace", MounterNamespace, "The namespace of the device mounter pod (default \"kube-system\")")
+	flag.StringVar(&MounterSelector, "mounter-label-selector", MounterSelector, "Specify the label selector for the device mounter pod")
 }
 
 func main() {
@@ -69,9 +76,22 @@ func main() {
 			klog.Errorf("Error running file watch: %s", err)
 		}
 	}()
-
-	handlers := apiserver.NewService(kubeClient, authConfigReader, MounterBindPort)
-
+	var selector labels.Selector
+	if len(MounterSelector) > 0 {
+		selector = apiserver.ParseLabelSelector(MounterSelector)
+		klog.Infoln("Using custom label selectors to find device mounter", selector.String())
+	} else {
+		selector = labels.SelectorFromSet(labels.Set{
+			config.AppComponentLabelKey: "daemonset",
+			config.AppCreatedByLabelKey: "device-mounter-daemonset",
+			config.AppInstanceLabelKey:  "device-mounter-daemonset",
+		})
+		klog.Infoln("Using default label selectors to find device mounter", selector.String())
+	}
+	handlers, err := apiserver.NewService(kubeClient, authConfigReader, MounterBindPort, MounterNamespace, selector)
+	if err != nil {
+		klog.Exitln(err)
+	}
 	restful.Add(apiServiceV1alpha1(handlers))
 	restful.Filter(restful.OPTIONSFilter())
 

@@ -66,7 +66,14 @@ func (m *AscendNPUMounter) DeviceType() string {
 	return "ASCEND_NPU"
 }
 
-func (m *AscendNPUMounter) CheckMountResources(_ *kubernetes.Clientset, node *v1.Node, _ *v1.Pod, _ *api.Container, request map[v1.ResourceName]resource.Quantity, _ map[string]string) (api.ResultCode, string, bool) {
+func (m *AscendNPUMounter) CheckMountResources(
+	_ *kubernetes.Clientset,
+	node *v1.Node,
+	_ *v1.Pod,
+	_ *api.Container,
+	request map[v1.ResourceName]resource.Quantity,
+	_ map[string]string) (api.ResultCode, string, bool) {
+
 	condition1 := CheckRequest910Resources(request)
 	condition2 := CheckRequestDynamicResources(request)
 	if !condition1 && !condition2 {
@@ -78,9 +85,16 @@ func (m *AscendNPUMounter) CheckMountResources(_ *kubernetes.Clientset, node *v1
 	return api.ResultCode_Success, "", true
 }
 
-func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, _ *api.Container,
-	request map[v1.ResourceName]resource.Quantity, annotations map[string]string, _ []*v1.Pod) ([]*v1.Pod, error) {
-	return []*v1.Pod{util.NewDeviceSlavePod(ownerPod, request, annotations)}, nil
+func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(
+	ownerPod *v1.Pod,
+	_ *api.Container,
+	request map[v1.ResourceName]resource.Quantity,
+	annotations map[string]string,
+	_ []*v1.Pod) ([]*v1.Pod, error) {
+
+	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	slavePod.Spec.PriorityClassName = ownerPod.Spec.PriorityClassName
+	return []*v1.Pod{slavePod}, nil
 }
 
 func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.StatusCode, error) {
@@ -103,7 +117,11 @@ func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	return api.Wait, nil
 }
 
-func (m *AscendNPUMounter) GetMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *AscendNPUMounter) GetMountDeviceInfo(
+	kubeClient *kubernetes.Clientset,
+	_ *v1.Pod,
+	_ *api.Container,
+	slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 	deviceInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
 		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
@@ -203,7 +221,9 @@ func (m *AscendNPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ uti
 	return nil
 }
 
-func (m *AscendNPUMounter) RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *AscendNPUMounter) CleanupPodResources(_ *kubernetes.Clientset,
+	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+
 	slavePodKeys := make([]types.NamespacedName, len(slavePods))
 	for i, slavePod := range slavePods {
 		slavePodKeys[i] = types.NamespacedName{

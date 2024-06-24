@@ -28,7 +28,7 @@ func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.Condi
 			break
 		}
 		if i+1 == retryCount {
-			err = fmt.Errorf("Unable to complete multiple retries")
+			err = fmt.Errorf("unable to complete after %d retries", retryCount)
 			break
 		}
 		time.Sleep(interval)
@@ -37,17 +37,20 @@ func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.Condi
 }
 
 func ContainsInt(slice []int, item int) bool {
-	for _, j := range slice {
-		if j == item {
-			return true
-		}
-	}
-	return false
+	return ContainsSliceFunc[[]int, int](slice, func(s int) bool {
+		return s == item
+	})
 }
 
 func ContainsString(slice []string, item string) bool {
-	for _, j := range slice {
-		if j == item {
+	return ContainsSliceFunc[[]string, string](slice, func(s string) bool {
+		return s == item
+	})
+}
+
+func ContainsSliceFunc[S ~[]E, E any](s S, match func(E) bool) bool {
+	for _, e := range s {
+		if match(e) {
 			return true
 		}
 	}

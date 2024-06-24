@@ -32,8 +32,8 @@ type DeviceMounter interface {
 	GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error)
 	// 卸载设备成功前的后续动作
 	UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, config util.Config, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) error
-	// 返回卸载设备时要被回收的pod资源
-	RecycledPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName
+	// 返回卸载设备时要被清理回收的pod资源
+	CleanupPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName
 }
 
 var (

@@ -51,7 +51,14 @@ func checkDeviceEnvironment() bool {
 	return true
 }
 
-func (m *NvidiaGPUMounter) CheckMountResources(_ *kubernetes.Clientset, node *v1.Node, _ *v1.Pod, _ *api.Container, request map[v1.ResourceName]resource.Quantity, _ map[string]string) (api.ResultCode, string, bool) {
+func (m *NvidiaGPUMounter) CheckMountResources(
+	_ *kubernetes.Clientset,
+	node *v1.Node,
+	_ *v1.Pod,
+	_ *api.Container,
+	request map[v1.ResourceName]resource.Quantity,
+	_ map[string]string) (api.ResultCode, string, bool) {
+
 	if !util.CheckResourcesInSlice(request, []string{ResourceName}, nil) {
 		return api.ResultCode_Fail, "Request for resources error", false
 	}
@@ -61,7 +68,13 @@ func (m *NvidiaGPUMounter) CheckMountResources(_ *kubernetes.Clientset, node *v1
 	return api.ResultCode_Success, "", true
 }
 
-func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, _ *api.Container, request map[v1.ResourceName]resource.Quantity, annotations map[string]string, _ []*v1.Pod) ([]*v1.Pod, error) {
+func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(
+	ownerPod *v1.Pod,
+	_ *api.Container,
+	request map[v1.ResourceName]resource.Quantity,
+	annotations map[string]string,
+	_ []*v1.Pod) ([]*v1.Pod, error) {
+
 	quantity := request[ResourceName]
 	gpuNumber := quantity.Value()
 	limits := map[v1.ResourceName]resource.Quantity{
@@ -69,11 +82,12 @@ func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, _ *api
 	}
 	var slavePods []*v1.Pod
 	for i := int64(0); i < gpuNumber; i++ {
-		pod := util.NewDeviceSlavePod(ownerPod, limits, annotations)
+		slavePod := util.NewDeviceSlavePod(ownerPod, limits, annotations)
 		// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
 		env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
-		pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, env)
-		slavePods = append(slavePods, pod)
+		slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)
+		slavePod.Spec.PriorityClassName = ownerPod.Spec.PriorityClassName
+		slavePods = append(slavePods, slavePod)
 	}
 	return slavePods, nil
 }
@@ -98,7 +112,9 @@ func (m *NvidiaGPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	return api.Wait, nil
 }
 
-func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod,
+	container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+
 	var deviceInfos []api.DeviceInfo
 	var gpus []*NvidiaGPU
 	for _, slavePod := range slavePods {
@@ -236,7 +252,9 @@ func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ uti
 	return nil
 }
 
-func (m *NvidiaGPUMounter) RecycledPodResources(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *NvidiaGPUMounter) CleanupPodResources(_ *kubernetes.Clientset,
+	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+
 	slavePodKeys := make([]types.NamespacedName, len(slavePods))
 	for i, slavePod := range slavePods {
 		slavePodKeys[i] = types.NamespacedName{

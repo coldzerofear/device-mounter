@@ -136,12 +136,13 @@ func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, cont
 	}
 
 	// TODO volcano vgpu 不考虑分多个pod申请资源
-	pod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations)
 	// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
 	env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
-	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, env)
-	pod.Spec.SchedulerName = "volcano"
-	return []*v1.Pod{pod}, nil
+	slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)
+	slavePod.Spec.SchedulerName = "volcano"
+	slavePod.Spec.PriorityClassName = ownerPod.Spec.PriorityClassName
+	return []*v1.Pod{slavePod}, nil
 }
 
 // 校验从属pod状态是否成功
@@ -481,7 +482,7 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 	return nil
 }
 
-func (m *VolcanoVGPUMounter) RecycledPodResources(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *VolcanoVGPUMounter) CleanupPodResources(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
 	slavePodKeys := make([]types.NamespacedName, 0)
 	for _, slavePod := range slavePods {
 		if config.AnnoIsExpansion(slavePod.Annotations) {
