@@ -20,7 +20,8 @@ $(error Unsupported architecture: $(ARCH))
 endif
 
 # Image URL to use all building/pushing image targets
-IMG ?= registry.tydic.com/device-mounter/device-mounter:$(DOCKER_ARCH_ARG)-latest
+IMG_PREFIX ?= registry.tydic.com/device-mounter
+TAG ?= $(DOCKER_ARCH_ARG)-latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -85,8 +86,13 @@ build: fmt vet ## Build binary.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image.
-	$(CONTAINER_TOOL) build --build-arg TARGETARCH=$(DOCKER_ARCH_ARG) --build-arg TARGETOS=$(GOOS) -t ${IMG} .
+	for name in apiserver mounter; do\
+		$(CONTAINER_TOOL) build -f ./dockerfile/$$name/Dockerfile -t "${IMG_PREFIX}/device-$$name:$(TAG)" . --build-arg TARGETARCH=$(DOCKER_ARCH_ARG) --build-arg TARGETOS=$(GOOS); \
+	done
 
 .PHONY: docker-push
 docker-push: ## Push docker image.
-	$(CONTAINER_TOOL) push ${IMG}
+	for name in apiserver mounter; do\
+		$(CONTAINER_TOOL) push ${IMG_PREFIX}/device-$$name:$(TAG); \
+    done
+

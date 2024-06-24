@@ -31,8 +31,8 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY cmd/ cmd/
-COPY pkg/ pkg/
+COPY cmd cmd/
+COPY pkg pkg/
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -40,7 +40,6 @@ COPY pkg/ pkg/
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o bin/apiserver cmd/apiserver/main.go
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
     CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
@@ -51,8 +50,9 @@ FROM registry.tydic.com/ubuntu/ubuntu:24.04
 
 WORKDIR /
 
-COPY --from=builder /go/src/k8s-device-mounter/bin/apiserver .
 COPY --from=builder /go/src/k8s-device-mounter/bin/mounter .
 
-COPY scripts/ scripts/
+COPY scripts scripts/
 RUN chmod +x scripts/*
+
+ENTRYPOINT ["/mounter"]
