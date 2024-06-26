@@ -93,6 +93,9 @@ func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(
 	_ []*v1.Pod) ([]*v1.Pod, error) {
 
 	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	// TODO slave pod 不用挂载驱动目录
+	env := v1.EnvVar{Name: AscendRuntimeOptionsEnv, Value: "NODRV"}
+	slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)
 	slavePod.Spec.PriorityClassName = ownerPod.Spec.PriorityClassName
 	return []*v1.Pod{slavePod}, nil
 }
@@ -119,12 +122,16 @@ func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 
 func (m *AscendNPUMounter) GetMountDeviceInfo(
 	kubeClient *kubernetes.Clientset,
-	_ *v1.Pod,
-	_ *api.Container,
+	ownerPod *v1.Pod,
+	container *api.Container,
 	slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
-	deviceInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
+
+	getDevInfoFunc := func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
 		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
+		if IsVirtDev(devId) {
+			deviceFilePath = ASCEND_VDEVICE_FILE_PREFIX + deviceId
+		}
 		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
 		if err != nil {
 			return api.DeviceInfo{}, err
@@ -140,9 +147,14 @@ func (m *AscendNPUMounter) GetMountDeviceInfo(
 				Allow:       true,
 			},
 		}, nil
-	})
+	}
+	deviceInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, getDevInfoFunc)
 	if err != nil {
 		return deviceInfos, err
+	}
+	// TODO 如果原始pod有npu，不再重复插入管理设备
+	if HasNPU(ownerPod, container) {
+		return deviceInfos, nil
 	}
 	// TODO 插入npu管理设备
 	mgrDevice := []string{ASCEND_DAVINCI_MANAGER_PATH, ASCEND_DEVMM_SVM_FILE_PATH, ASCEND_HISI_HDC_FILE_PATH}
@@ -192,7 +204,7 @@ func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset
 	//})
 }
 
-// TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
+//TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
 //func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
 //	processInfos, err := m.GetRunningProcess()
 //	if err != nil {

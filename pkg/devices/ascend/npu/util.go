@@ -1,5 +1,13 @@
 package npu
 
+import (
+	"strings"
+
+	"Ascend-device-plugin/pkg/common"
+	"k8s-device-mounter/pkg/api"
+	v1 "k8s.io/api/core/v1"
+)
+
 const (
 	AscendRtVisibleDevicesEnv = "ASCEND_RT_VISIBLE_DEVICES"
 
@@ -27,8 +35,27 @@ const (
 	ASCEND_DAVINCI_MANAGER_PATH = "/dev/davinci_manager"
 	ASCEND_DEVMM_SVM_FILE_PATH  = "/dev/devmm_svm"
 	ASCEND_HISI_HDC_FILE_PATH   = "/dev/hisi_hdc"
+	ASCEND_VDEVICE_FILE_PREFIX  = "/dev/vdavinci"
 
 	DEFAULT_DAVINCI_MAJOR_NUMBER = 236
+	// TODO vNPU设备id取值范围 https://www.hiascend.com/document/detail/zh/computepoweralloca/300/cpaug/cpaug/cpaug_00010.html
+	//Ascend 310P的vnpu_id的取值范围为[phy_id*16 + 100, phy_id * 16+107]。
+	//Ascend 910的vnpu_id的取值范围为[phy_id*16 + 100, phy_id * 16+115]。
+	VNPU_DEVICE_INDEX_START = 100
 
 	DEFAULT_CGROUP_PERMISSION = "rwm"
 )
+
+func IsVirtDev(devId int) bool {
+	return devId >= VNPU_DEVICE_INDEX_START
+}
+
+func HasNPU(pod *v1.Pod, container *api.Container) bool {
+	c := pod.Spec.Containers[container.Index]
+	for name, _ := range c.Resources.Limits {
+		if strings.HasPrefix(string(name), common.ResourceNamePrefix) {
+			return true
+		}
+	}
+	return false
+}

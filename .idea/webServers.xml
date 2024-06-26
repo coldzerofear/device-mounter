@@ -3,7 +3,7 @@
   <component name="WebServers">
     <option name="servers">
       <webServer id="0434e401-b906-4662-80a7-7ac28a4e5d4b" name="localvm">
-        <fileTransfer accessType="SFTP" host="172.23.237.229" port="22" sshConfigId="30678c7f-5313-45c8-a953-1d4f629c2ede" sshConfig="root@172.23.237.229:22 password">
+        <fileTransfer accessType="SFTP" host="172.26.191.23" port="22" sshConfigId="30678c7f-5313-45c8-a953-1d4f629c2ede" sshConfig="root@172.26.191.23:22 password">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>
