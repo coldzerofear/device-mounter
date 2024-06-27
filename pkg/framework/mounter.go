@@ -1,6 +1,8 @@
 package framework
 
 import (
+	"strings"
+
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -43,13 +45,14 @@ var (
 
 // TODO 在这里注册设备挂载器
 func RegisrtyDeviceMounter() error {
-	for _, f := range AddDeviceMounterFuncs {
-		mounter, err := f()
+	for _, createFunc := range AddDeviceMounterFuncs {
+		mounter, err := createFunc()
 		if err != nil {
 			klog.Errorf(err.Error())
 			continue
 		}
-		RegisterDeviceMounter[mounter.DeviceType()] = mounter
+		devType := strings.ToUpper(mounter.DeviceType())
+		RegisterDeviceMounter[devType] = mounter
 	}
 	return nil
 }

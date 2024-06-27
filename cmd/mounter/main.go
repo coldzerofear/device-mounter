@@ -17,6 +17,8 @@ import (
 	"k8s-device-mounter/pkg/config"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/server/mounter"
+	"k8s-device-mounter/pkg/watchdog"
+
 	// init device mounter
 	_ "k8s-device-mounter/pkg/devices"
 	v1 "k8s.io/api/core/v1"
@@ -79,7 +81,9 @@ func main() {
 				fields.OneTermEqualSelector("spec.nodeName", nodeName)), &v1.Pod{},
 				duration, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 		})
+	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
 	_ = podInformer.SetTransform(cache2.TransformStripManagedFields())
+	_ = nodeInformer.SetTransform(cache2.TransformStripManagedFields())
 	stopCh := make(chan struct{})
 	informerFactory.Start(stopCh)
 	informerFactory.WaitForCacheSync(stopCh)
@@ -109,6 +113,12 @@ func main() {
 		deviceTypes = append(deviceTypes, mount.DeviceType())
 	}
 	klog.Infoln("Successfully registered mounts include", deviceTypes)
+
+	klog.Infoln("Starting watchdog...")
+	kubeConfig = client.GetKubeConfig(KubeConfig)
+	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
+	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeInformer, nodeClient)
+	go nodeLabeler.Start()
 
 	klog.Infoln("Service Starting...")
 

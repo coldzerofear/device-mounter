@@ -18,6 +18,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sys v0.19.0
+	gomodules.xyz/jsonpatch/v2 v2.4.0
 	google.golang.org/grpc v1.58.3
 	google.golang.org/protobuf v1.33.0
 	huawei.com/npu-exporter/v6 v6.0.0-RC2.b001

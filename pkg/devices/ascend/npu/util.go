@@ -21,7 +21,7 @@ const (
 	// VIRTUAL：表示挂载的是虚拟芯片。
 	// NODRV,VIRTUAL：表示挂载的是虚拟芯片，并且不挂载驱动相关目录。
 	AscendRuntimeOptionsEnv = "ASCEND_RUNTIME_OPTIONS"
-	// 读取配置文件中的挂载内容。
+	// TODO 配置自定义挂载内容 https://www.hiascend.com/document/detail/zh/mindx-dl/60rc1/clusterscheduling/dockerruntimeug/dlruntime_ug_012.html
 	AscendRuntimeMountsEnv = "ASCEND_RUNTIME_MOUNTS"
 	// 从物理NPU设备中切分出一定数量的AI Core，指定为虚拟设备。
 	// 支持的取值为（vir01，vir02，vir04，vir08，vir16）。
