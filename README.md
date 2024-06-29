@@ -66,6 +66,8 @@ Nvidia GPU Device Plugin. See [Nvidia_GPU Using Help](docs/guide/NvidiaGPU.md)
 
 Volcano vGPU Device Plugin. See [Volcano_VGPU Using Help](docs/guide/VolcanoVGPU.md)
 
+Ascend NPU Device Plugin. See [Ascend_NPU Using Help](docs/guide/AscendNPU.md)
+
 ## FAQ
 
 See  [FAQ.md](docs/guide/FAQ.md)

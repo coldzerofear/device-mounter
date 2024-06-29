@@ -181,50 +181,73 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.
 	return nil
 }
 
-func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
-	return nil, fmt.Errorf("Currently not supported for uninstalling Ascend NPUs")
-	//return m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
-	//	deviceId := strconv.Itoa(devId)
-	//	deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
-	//	major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
-	//	if err != nil {
-	//		return api.DeviceInfo{}, err
-	//	}
-	//	return api.DeviceInfo{
-	//		DeviceID:       deviceId,
-	//		DeviceFilePath: deviceFilePath,
-	//		Rule: devices.Rule{
-	//			Type:        devType,
-	//			Major:       int64(major),
-	//			Minor:       int64(minor),
-	//			Permissions: DEFAULT_CGROUP_PERMISSION,
-	//			Allow:       false,
-	//		},
-	//	}, nil
-	//})
+func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+	if HasNPU(ownerPod, container) {
+		return nil, fmt.Errorf("Currently not supported for uninstalling Ascend NPUs")
+	}
+	devInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
+		deviceId := strconv.Itoa(devId)
+		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
+		if IsVirtDev(devId) {
+			deviceFilePath = ASCEND_VDEVICE_FILE_PREFIX + deviceId
+		}
+		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFilePath)
+		if err != nil {
+			return api.DeviceInfo{}, err
+		}
+		return api.DeviceInfo{
+			DeviceID:       deviceId,
+			DeviceFilePath: deviceFilePath,
+			Rule: devices.Rule{
+				Type:        devType,
+				Major:       int64(major),
+				Minor:       int64(minor),
+				Permissions: DEFAULT_CGROUP_PERMISSION,
+				Allow:       false,
+			},
+		}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO 移除npu管理设备
+	mgrDevice := []string{ASCEND_DAVINCI_MANAGER_PATH, ASCEND_DEVMM_SVM_FILE_PATH, ASCEND_HISI_HDC_FILE_PATH}
+	for _, deviceFile := range mgrDevice {
+		major, minor, devType, err := util.GetDeviceFileVersionV2(deviceFile)
+		if err != nil {
+			return nil, err
+		}
+		devInfos = append(devInfos, api.DeviceInfo{
+			DeviceFilePath: deviceFile,
+			Rule: devices.Rule{
+				Type:        devType,
+				Major:       int64(major),
+				Minor:       int64(minor),
+				Permissions: DEFAULT_CGROUP_PERMISSION,
+				Allow:       false,
+			},
+		})
+	}
+
+	return devInfos, nil
 }
 
-//TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
-//func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
-//	processInfos, err := m.GetRunningProcess()
-//	if err != nil {
-//		return nil, err
-//	}
-//	processes := sets.NewInt()
-//	for _, processInfo := range processInfos {
-//		for i := int32(0); i < processInfo.ProcNum; i++ {
-//			info := processInfo.DevProcArray[i]
-//			if util.ContainsInt(containerPids, int(info.Pid)) {
-//				processes.Insert(int(info.Pid))
-//			}
-//		}
-//	}
-//	return processes.List(), nil
-//}
-
+// TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
 func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
+	processInfos, err := m.GetRunningProcess()
+	if err != nil {
+		return nil, err
+	}
 	processes := sets.NewInt()
-
+	for _, processInfo := range processInfos {
+		for i := int32(0); i < processInfo.ProcNum; i++ {
+			info := processInfo.DevProcArray[i]
+			if util.ContainsInt(containerPids, int(info.Pid)) {
+				processes.Insert(int(info.Pid))
+			}
+		}
+	}
 	return processes.List(), nil
 }
 

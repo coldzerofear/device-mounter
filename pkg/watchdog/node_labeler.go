@@ -47,6 +47,8 @@ func (l *nodeLabeler) Start() {
 		node, err := l.Get(l.nodeName)
 		if err != nil {
 			klog.V(3).ErrorS(err, "NodeLabeler Error Searching for Current Node")
+			time.Sleep(time.Second)
+			continue
 		}
 		var (
 			labelKeys   []string
