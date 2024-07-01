@@ -287,6 +287,18 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 				_ = execNvidiaSMI(kubeClient, ownerPod, container)
 				cacheFile := GetVGPUCacheFileDir(ownerPod, container)
 				if err = MutationCacheFunc(cacheFile, func(cache *sharedRegionT) error {
+					for i := uint64(0); i < cache.num; i++ {
+						devuuid := string(cache.uuids[i].uuid[:])[0:40]
+						if dev, ok := devMap[devuuid]; ok {
+							cores := uint64(dev.Usedcores)
+							memory := uint64(dev.Usedmem) << 20 // mb转bytes
+							//klog.Infoln("Expansion device", devuuid, "add memory", memory, "add core", cores)
+							klog.Infoln("Attach new device", devuuid, "memory limit", memory, "core limit", cores)
+							cache.limit[i] = memory
+							cache.sm_limit[i] = cores
+							delete(devMap, devuuid)
+						}
+					}
 					for devuuid, dev := range devMap {
 						tail := cache.num
 						cores := uint64(dev.Usedcores)
