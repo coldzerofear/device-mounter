@@ -262,11 +262,14 @@ func GetGroupPathV2(podCGroupPath string) string {
 }
 
 func GetK8sPodCGroupPath(pod *v1.Pod, container *api.Container, oldVersion bool) (string, error) {
-	found := false
-	runtimeName, containerId := "", ""
+	var (
+		found       bool
+		runtimeName string
+		containerId string
+	)
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == container.Name {
-			runtimeName, containerId = parseRuntimeNameAndContainerId(status.ContainerID)
+			runtimeName, containerId = parseRuntime(status.ContainerID)
 			found = true
 			break
 		}
@@ -351,11 +354,10 @@ func SystemdPathPrefixOfRuntime(runtimeName string) string {
 	}
 }
 
-func parseRuntimeNameAndContainerId(containerStatusId string) (runtimeName string, containerId string) {
-	if splits := strings.Split(containerStatusId, "://"); len(splits) == 2 {
+func parseRuntime(podContainerId string) (runtimeName string, containerId string) {
+	if splits := strings.Split(podContainerId, "://"); len(splits) == 2 {
 		runtimeName = splits[0]
 		containerId = splits[1]
-		return
 	}
 	return
 }

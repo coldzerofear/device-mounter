@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"Ascend-device-plugin/pkg/common"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"huawei.com/npu-exporter/v6/common-utils/hwlog"
 	"huawei.com/npu-exporter/v6/devmanager"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -69,8 +71,8 @@ func (m *AscendNPUMounter) DeviceType() string {
 func (m *AscendNPUMounter) CheckMountResources(
 	_ *kubernetes.Clientset,
 	node *v1.Node,
-	_ *v1.Pod,
-	_ *api.Container,
+	ownerPod *v1.Pod,
+	container *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
 	_ map[string]string) (api.ResultCode, string, bool) {
 
@@ -81,6 +83,12 @@ func (m *AscendNPUMounter) CheckMountResources(
 	}
 	if !util.CheckResourcesInNode(node, request) {
 		return api.ResultCode_Insufficient, "Insufficient node resources", false
+	}
+	// 校验目标容器是否初始化过npu
+	names := ownerPod.Annotations[InitNPUAnnotations]
+	ctrNames := strings.Split(strings.TrimSpace(names), ",")
+	if util.ContainsString(ctrNames, container.Name) {
+		return api.ResultCode_Fail, "The target container has initialized the NPU and cannot be mounted again", false
 	}
 	return api.ResultCode_Success, "", true
 }
@@ -177,7 +185,21 @@ func (m *AscendNPUMounter) GetMountDeviceInfo(
 	return deviceInfos, nil
 }
 
-func (m *AscendNPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
+	if !HasNPU(ownerPod, container) {
+		var contNames []string
+		names := ownerPod.Annotations[InitNPUAnnotations]
+		if names = strings.TrimSpace(names); len(names) > 0 {
+			contNames = strings.Split(names, ",")
+		}
+		if !util.ContainsString(contNames, container.Name) {
+			contNames = append(contNames, container.Name)
+			annotations := map[string]string{InitNPUAnnotations: strings.Join(contNames, ",")}
+			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+				return fmt.Errorf("Failed to patch pod annotation [%s]: %v", InitNPUAnnotations, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -252,7 +274,19 @@ func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 }
 
 // 卸载设备成功前的后续动作
-func (m *AscendNPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
+	if names := strings.TrimSpace(ownerPod.Annotations[InitNPUAnnotations]); len(names) > 0 {
+		oldNames := strings.Split(names, ",")
+		newNames := util.DeleteSliceFunc(oldNames, func(s string) bool {
+			return s != container.Name
+		})
+		if len(oldNames) != len(newNames) {
+			annotations := map[string]string{InitNPUAnnotations: strings.Join(newNames, ",")}
+			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+				return fmt.Errorf("Failed to patch pod annotation [%s]: %v", InitNPUAnnotations, err)
+			}
+		}
+	}
 	return nil
 }
 

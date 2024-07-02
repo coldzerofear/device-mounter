@@ -5,10 +5,13 @@ import (
 
 	"Ascend-device-plugin/pkg/common"
 	"k8s-device-mounter/pkg/api"
+	"k8s-device-mounter/pkg/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 )
 
 const (
+	InitNPUAnnotations = v1alpha1.Group + "/initNPU"
+
 	AscendRtVisibleDevicesEnv = "ASCEND_RT_VISIBLE_DEVICES"
 
 	// AscendVisibleDevicesEnv visible devices env

@@ -137,7 +137,7 @@ func NewDeviceSlavePod(ownerPod *v1.Pod, limits map[v1.ResourceName]resource.Qua
 			Priority:          ownerPod.Spec.Priority,
 			RestartPolicy:     v1.RestartPolicyAlways,
 			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": ownerPod.Spec.NodeName,
+				v1.LabelHostname: ownerPod.Spec.NodeName,
 			},
 		},
 		Status: v1.PodStatus{},
