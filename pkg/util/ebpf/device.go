@@ -7,6 +7,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"golang.org/x/sys/unix"
+	"k8s.io/klog/v2"
 )
 
 type Instructions asm.Instructions
@@ -116,13 +117,20 @@ func (insts *Instructions) AppendRule(rule *devices.Rule) error {
 	if hasAccess {
 		insert = append(insert,
 			// if (R3 & bpfAccess != R3 /* use R1 as a temp var */) goto next
-			asm.Mov.Reg32(asm.R1, asm.R3),
-			asm.And.Imm32(asm.R1, bpfAccess),
+			asm.Mov.Reg32(asm.R6, asm.R3),
+			asm.And.Imm32(asm.R6, bpfAccess),
 			func() asm.Instruction {
-				reg := asm.JNE.Reg(asm.R1, asm.R3, "")
+				reg := asm.JNE.Reg(asm.R6, asm.R3, "")
 				reg.Offset = 4
 				return reg
 			}(),
+			//asm.Mov.Reg32(asm.R1, asm.R3),
+			//asm.And.Imm32(asm.R1, bpfAccess),
+			//func() asm.Instruction {
+			//	reg := asm.JNE.Reg(asm.R1, asm.R3, "")
+			//	reg.Offset = 4
+			//	return reg
+			//}(),
 		)
 	}
 	if hasMajor {
@@ -147,9 +155,13 @@ func (insts *Instructions) AppendRule(rule *devices.Rule) error {
 	}
 	insert = append(insert, acceptBlock(rule.Allow)...)
 
-	if index < 0 {
+	// TODO index 0 包含了其他的一些指令，直接替换将报错：load program: permission denied: 0: (55) if r2 != 0x2 goto pc+7: R2 !read_ok (1 line(s) omitted)
+	// 所以如果规则处于index 0上则直接追加，epf 字节指令规则之后的将覆盖之前的
+	if index <= 0 {
+		klog.V(5).Infoln("insert asm.Instructions index", len(groups))
 		groups = append(groups, insert)
 	} else {
+		klog.V(5).Infoln("update asm.Instructions index", index)
 		groups[index] = insert
 	}
 	*insts = Instructions{}
