@@ -76,7 +76,7 @@ spec:
       # be rescheduled after a failure.
       # See https://kubernetes.io/docs/tasks/administer-cluster/guaranteed-scheduling-critical-addon-pods/
       priorityClassName: "system-node-critical"
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 60
       hostPID: true
       nodeSelector:
         device-mounter-enable: enable

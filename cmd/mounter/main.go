@@ -118,7 +118,8 @@ func main() {
 	kubeConfig = client.GetKubeConfig(KubeConfig)
 	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeInformer, nodeClient)
-	go nodeLabeler.Start()
+	watchdogStop := make(chan struct{}, 1)
+	go nodeLabeler.Start(watchdogStop)
 
 	klog.Infoln("Service Starting...")
 
@@ -157,6 +158,8 @@ func main() {
 		klog.Infoln("Shutting down grpc unix service...")
 		s2.GracefulStop()
 	}
+	close(watchdogStop)
+	nodeLabeler.Done()
 	klog.Infoln("Service stopped, please restart the service")
 	os.Exit(1)
 }
