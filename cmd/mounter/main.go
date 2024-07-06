@@ -139,18 +139,18 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT)
-
+	exitCode := 0
 	select {
 	case <-stopCh1:
 		klog.Infoln("The grpc tpc service has been shut down.")
 		klog.Infoln("Shutting down grpc unix service...")
 		s2.GracefulStop()
-
+		exitCode = 1
 	case <-stopCh2:
 		klog.Infoln("The grpc unix service has been shut down.")
 		klog.Infoln("Shutting down grpc tcp service...")
 		s1.GracefulStop()
-
+		exitCode = 1
 	case s := <-sigChan:
 		klog.Infof("Received signal %v, shutting down.", s)
 		klog.Infoln("Shutting down grpc tcp service...")
@@ -161,7 +161,7 @@ func main() {
 	close(watchdogStop)
 	nodeLabeler.Done()
 	klog.Infoln("Service stopped, please restart the service")
-	os.Exit(1)
+	os.Exit(exitCode)
 }
 
 func StartTcpService(server api.DeviceMountServiceServer, stopCh chan<- struct{}) (*grpc.Server, error) {
