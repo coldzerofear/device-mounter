@@ -106,7 +106,8 @@ func (m *NvidiaGPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	if !(len(slavePod.Status.Conditions) > 0) {
 		return api.Wait, nil
 	}
-	if slavePod.Status.Conditions[0].Reason == v1.PodReasonUnschedulable {
+	if slavePod.Status.Conditions[0].Reason == v1.PodReasonUnschedulable ||
+		slavePod.Status.Conditions[0].Reason == v1.PodReasonSchedulerError {
 		return api.Unschedulable, fmt.Errorf(slavePod.Status.Conditions[0].Message)
 	}
 	return api.Wait, nil
