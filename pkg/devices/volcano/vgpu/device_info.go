@@ -331,6 +331,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 				}
 				// TODO 删除默认位置的vgpu缓存，防止 挂载->卸载->再挂载 失败
 				_, _, _ = cfg.Execute("sh", "-c", "rm -f /tmp/cudevshr.cache")
+				_, _, _ = cfg.Execute("sh", "-c", "rm -rf /tmp/vgpu")
 				_, _, _ = cfg.Execute("sh", "-c", "mkdir -p /tmp/vgpu")
 				_, _, _ = cfg.Execute("sh", "-c", "mkdir -p "+VGPU_DIR_PATH)
 
