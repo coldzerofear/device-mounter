@@ -1,6 +1,7 @@
 package util
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -45,9 +46,9 @@ func Test_DeleteSliceFunc(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			res := DeleteSliceFunc(test.slice, func(s string) bool {
 				if len(test.match) > 0 {
-					return ContainsString(test.match, s)
+					return slices.Contains(test.match, s)
 				} else {
-					return !ContainsString(test.noMatch, s)
+					return !slices.Contains(test.noMatch, s)
 				}
 			})
 			assert.Equal(t, test.want, res)

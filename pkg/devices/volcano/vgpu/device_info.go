@@ -3,6 +3,7 @@ package vgpu
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -88,7 +89,7 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 		// 非扩展请求校验容器是否初始化过vGPU设备
 		names := ownerPod.Annotations[InitVGPUAnnotations]
 		ctrNames := strings.Split(strings.TrimSpace(names), ",")
-		if util.ContainsString(ctrNames, container.Name) {
+		if slices.Contains(ctrNames, container.Name) {
 			return api.ResultCode_Fail, "The target container has initialized the vGPU and cannot be mounted again", false
 		}
 	}
@@ -364,7 +365,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 				if names = strings.TrimSpace(names); len(names) > 0 {
 					contNames = strings.Split(names, ",")
 				}
-				if !util.ContainsString(contNames, container.Name) {
+				if !slices.Contains(contNames, container.Name) {
 					contNames = append(contNames, container.Name)
 					annotations := map[string]string{InitVGPUAnnotations: strings.Join(contNames, ",")}
 					if err = client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
@@ -414,7 +415,7 @@ func (m *VolcanoVGPUMounter) GetDeviceRunningProcesses(containerPids []int, devi
 	var pids []int
 	for _, info := range deviceInfos {
 		if err := DeviceRunningProcessFunc(info.DeviceID, func(process nvml.ProcessInfo) {
-			if util.ContainsInt(containerPids, int(process.Pid)) {
+			if slices.Contains(containerPids, int(process.Pid)) {
 				pids = append(pids, int(process.Pid))
 			}
 		}); err != nil {

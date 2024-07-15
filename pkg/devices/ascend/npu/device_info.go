@@ -3,6 +3,7 @@ package npu
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -87,7 +88,7 @@ func (m *AscendNPUMounter) CheckMountResources(
 	// 校验目标容器是否初始化过npu
 	names := ownerPod.Annotations[InitNPUAnnotations]
 	ctrNames := strings.Split(strings.TrimSpace(names), ",")
-	if util.ContainsString(ctrNames, container.Name) {
+	if slices.Contains(ctrNames, container.Name) {
 		return api.ResultCode_Fail, "The target container has initialized the NPU and cannot be mounted again", false
 	}
 	return api.ResultCode_Success, "", true
@@ -193,7 +194,7 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset
 		if names = strings.TrimSpace(names); len(names) > 0 {
 			contNames = strings.Split(names, ",")
 		}
-		if !util.ContainsString(contNames, container.Name) {
+		if !slices.Contains(contNames, container.Name) {
 			contNames = append(contNames, container.Name)
 			annotations := map[string]string{InitNPUAnnotations: strings.Join(contNames, ",")}
 			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
@@ -266,7 +267,7 @@ func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 	for _, processInfo := range processInfos {
 		for i := int32(0); i < processInfo.ProcNum; i++ {
 			info := processInfo.DevProcArray[i]
-			if util.ContainsInt(containerPids, int(info.Pid)) {
+			if slices.Contains(containerPids, int(info.Pid)) {
 				processes.Insert(int(info.Pid))
 			}
 		}

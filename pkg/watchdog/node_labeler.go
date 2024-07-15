@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"gomodules.xyz/jsonpatch/v2"
 	"k8s-device-mounter/pkg/api/v1alpha1"
 	"k8s-device-mounter/pkg/framework"
-	"k8s-device-mounter/pkg/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -142,7 +142,7 @@ func (l *nodeLabeler) updateLabels() error {
 
 	for devType, _ := range framework.RegisterDeviceMounter {
 		labelKey := strings.ToLower(SchedulingLabelPrefix + "/" + devType)
-		if !util.ContainsString(labelKeys, labelKey) {
+		if !slices.Contains(labelKeys, labelKey) {
 			addKeys = append(addKeys, labelKey)
 		} else if node.Labels[labelKey] != "true" {
 			replaceKeys = append(replaceKeys, labelKey)

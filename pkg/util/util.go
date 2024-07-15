@@ -36,27 +36,6 @@ func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.Condi
 	return err
 }
 
-func ContainsInt(slice []int, item int) bool {
-	return ContainsSliceFunc[[]int, int](slice, func(s int) bool {
-		return s == item
-	})
-}
-
-func ContainsString(slice []string, item string) bool {
-	return ContainsSliceFunc[[]string, string](slice, func(s string) bool {
-		return s == item
-	})
-}
-
-func ContainsSliceFunc[S ~[]E, E any](s S, match func(E) bool) bool {
-	for _, e := range s {
-		if match(e) {
-			return true
-		}
-	}
-	return false
-}
-
 func DeleteSliceFunc[S ~[]E, E any](s S, filter func(E) bool) S {
 	if s == nil {
 		return s
