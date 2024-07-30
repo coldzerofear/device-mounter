@@ -81,7 +81,13 @@ func main() {
 				fields.OneTermEqualSelector("spec.nodeName", nodeName)), &v1.Pod{},
 				duration, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 		})
+	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
+		klog.Errorf("pod informer watch error: %v", err)
+	})
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
+	_ = nodeInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
+		klog.Errorf("node informer watch error: %v", err)
+	})
 	_ = podInformer.SetTransform(cache2.TransformStripManagedFields())
 	_ = nodeInformer.SetTransform(cache2.TransformStripManagedFields())
 	stopCh := make(chan struct{})

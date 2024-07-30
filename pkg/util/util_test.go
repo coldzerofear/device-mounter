@@ -18,19 +18,19 @@ func Test_DeleteSliceFunc(t *testing.T) {
 		want    []string
 	}{
 		{
-			name:  "Example 0, Macth",
+			name:  "Example 0, Match",
 			slice: []string{"test1", "test2", "test3"},
 			match: []string{"test1", "test2"},
 			want:  []string{"test1", "test2"},
 		},
 		{
-			name:  "Example 1, Macth",
+			name:  "Example 1, Match",
 			slice: []string{"test1", "test2", "test3", "test3"},
 			match: []string{"test1", "test3"},
 			want:  []string{"test1", "test3", "test3"},
 		},
 		{
-			name:    "Example 2, No Macth",
+			name:    "Example 2, No Match",
 			slice:   []string{"test1", "test2", "test3", "test3"},
 			noMatch: []string{"test4"},
 			want:    []string{"test1", "test2", "test3", "test3"},

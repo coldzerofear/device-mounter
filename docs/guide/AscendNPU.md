@@ -27,6 +27,8 @@ metadata:
   name: npu-test
   namespace: default
 spec:
+  nodeSelector:
+    scheduling.device-mounter.io/ascend_npu: "true"
   containers:
   - name: default
     imagePullPolicy: IfNotPresent

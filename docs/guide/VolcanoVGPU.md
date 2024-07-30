@@ -19,6 +19,8 @@ metadata:
   namespace: default
 spec:
   schedulerName: volcano
+  nodeSelector:
+    scheduling.device-mounter.io/ascend_vgpu: "true"
   containers:
     - name: ubuntu-container
       command: ["sh", "-c", "sleep 86400"]
@@ -101,6 +103,8 @@ metadata:
   namespace: default
 spec:
   schedulerName: volcano
+  nodeSelector:
+    scheduling.device-mounter.io/ascend_vgpu: "true"
   containers:
     - name: ubuntu-container
       command: ["sh", "-c", "sleep 86400"]

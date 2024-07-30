@@ -74,15 +74,15 @@ func (m *AscendNPUMounter) CheckMountResources(
 	node *v1.Node,
 	ownerPod *v1.Pod,
 	container *api.Container,
-	request map[v1.ResourceName]resource.Quantity,
-	_ map[string]string) (api.ResultCode, string, bool) {
+	resources map[v1.ResourceName]resource.Quantity,
+	annotations map[string]string) (api.ResultCode, string, bool) {
 
-	condition1 := CheckRequest910Resources(request)
-	condition2 := CheckRequestDynamicResources(request)
+	condition1 := CheckRequest910Resources(resources)
+	condition2 := CheckRequestDynamicResources(resources, annotations)
 	if !condition1 && !condition2 {
 		return api.ResultCode_Fail, "Request for resources error: unsupported resource types", false
 	}
-	if !util.CheckResourcesInNode(node, request) {
+	if !util.CheckResourcesInNode(node, resources) {
 		return api.ResultCode_Insufficient, "Insufficient node resources", false
 	}
 	// 校验目标容器是否初始化过npu

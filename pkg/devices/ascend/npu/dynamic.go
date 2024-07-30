@@ -11,6 +11,12 @@ const (
 	DynamicResourceName = common.ResourceNamePrefix + common.AiCoreResourceName // 动态资源
 )
 
-func CheckRequestDynamicResources(request map[v1.ResourceName]resource.Quantity) bool {
-	return util.CheckResourcesInSlice(request, []string{DynamicResourceName}, nil)
+func CheckRequestDynamicResources(request map[v1.ResourceName]resource.Quantity, annotations map[string]string) bool {
+	if !util.CheckResourcesInSlice(request, []string{DynamicResourceName}, nil) {
+		return false
+	}
+	if annotations == nil || len(annotations[DynamicResourceName]) == 0 {
+		return false
+	}
+	return true
 }

@@ -22,6 +22,8 @@ metadata:
   name: gpu-pod
   namespace: default
 spec:
+  nodeSelector:
+    scheduling.device-mounter.io/nvidia_gpu: "true"
   containers:
     - name: cuda-container
       image: tensorflow/tensorflow:1.13.2-gpu
