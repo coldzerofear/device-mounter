@@ -19,14 +19,15 @@ const (
 	// 使用设备序号指定设备，支持单个和范围指定且支持混用。
 	AscendVisibleDevicesEnv = "ASCEND_VISIBLE_DEVICES"
 
-	// 对参数ASCEND_VISIBLE_DEVICES中指定的芯片ID作出限制：
+	// AscendRuntimeOptionsEnv 对参数ASCEND_VISIBLE_DEVICES中指定的芯片ID作出限制：
 	// NODRV：表示不挂载驱动相关目录。
 	// VIRTUAL：表示挂载的是虚拟芯片。
 	// NODRV,VIRTUAL：表示挂载的是虚拟芯片，并且不挂载驱动相关目录。
 	AscendRuntimeOptionsEnv = "ASCEND_RUNTIME_OPTIONS"
+	// AscendRuntimeMountsEnv
 	// TODO 配置自定义挂载内容 https://www.hiascend.com/document/detail/zh/mindx-dl/60rc1/clusterscheduling/dockerruntimeug/dlruntime_ug_012.html
 	AscendRuntimeMountsEnv = "ASCEND_RUNTIME_MOUNTS"
-	// 从物理NPU设备中切分出一定数量的AI Core，指定为虚拟设备。
+	// AscendVNPUSpecsEnv 从物理NPU设备中切分出一定数量的AI Core，指定为虚拟设备。
 	// 支持的取值为（vir01，vir02，vir04，vir08，vir16）。
 	//Ascend 710系列处理器仅支持vir01、vir02和vir04。
 	//Ascend 910系列处理器仅支持vir02、vir04、vir08和vir16。

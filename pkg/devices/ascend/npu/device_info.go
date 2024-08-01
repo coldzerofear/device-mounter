@@ -257,7 +257,11 @@ func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset
 	return devInfos, nil
 }
 
-// TODO 由于昇腾npu以命名空间隔离进程id，在host命名空间下无法查看容器进程id，所以这种方法不适用
+// TODO 昇腾npu以容器命名空间隔离进程id，经测试发现有版本兼容问题
+// Mindx v6.0+配套软件下：也就是ascend驱动24.1+、cann8.0+， host进程命名空间能检测到容器进程
+// 版本配套信息 https://www.hiascend.com/document/detail/zh/mindx-dl/60rc2/description/releasenote/mxreleasenote_006.html
+// Mindx v6.0-配套软件下：host进程命名空间无法查询到容器进程，强烈建议升级Mindx配套软件到v6.0+
+// 版本配套信息 https://www.hiascend.com/document/detail/zh/mindx-dl/501/releasenote/mxreleasenote_002.html
 func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
 	processInfos, err := m.GetRunningProcess()
 	if err != nil {
