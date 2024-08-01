@@ -39,8 +39,11 @@ type requestUnMountParams struct {
 
 func (s *service) GetMounterPodOnNodeName(nodeName string) (*v1.Pod, error) {
 
-	podList, err := s.kubeClient.CoreV1().Pods("kube-system").
-		List(context.TODO(), metav1.ListOptions{LabelSelector: s.labelSelector.String()})
+	podList, err := s.kubeClient.CoreV1().Pods(s.targetNamespace).
+		List(context.TODO(), metav1.ListOptions{
+			LabelSelector:   s.labelSelector.String(),
+			ResourceVersion: "0",
+		})
 	if err != nil {
 		return nil, fmt.Errorf("error getting device mounter Pod: %w", err)
 	}

@@ -73,7 +73,10 @@ func main() {
 	kubeClient := client.GetKubeClient(KubeConfig)
 
 	klog.Infoln("Initialize the informer factory...")
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, 5*time.Minute)
+	resyncConfig := informers.WithCustomResyncConfig(map[metav1.Object]time.Duration{
+		//&v1.Node{}: 30 * time.Minute, &v1.Pod{}: 5 * time.Minute,
+	})
+	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, resyncConfig)
 	podInformer := informerFactory.InformerFor(&v1.Pod{},
 		func(k kubernetes.Interface, duration time.Duration) cache.SharedIndexInformer {
 			return cache.NewSharedIndexInformer(cache.NewListWatchFromClient(
@@ -101,11 +104,14 @@ func main() {
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "DeviceMounter"})
 
+	nodeLister := listerv1.NewNodeLister(nodeInformer.GetIndexer())
+	podLister := listerv1.NewPodLister(podInformer.GetIndexer())
 	serverImpl := &mounter.DeviceMounterImpl{
 		NodeName:   nodeName,
 		KubeClient: kubeClient,
 		Recorder:   recorder,
-		PodLister:  listerv1.NewPodLister(podInformer.GetIndexer()),
+		NodeLister: nodeLister,
+		PodLister:  podLister,
 		IsCGroupV2: cgroups.IsCgroup2UnifiedMode(),
 	}
 
@@ -123,7 +129,7 @@ func main() {
 	klog.Infoln("Starting watchdog...")
 	kubeConfig = client.GetKubeConfig(KubeConfig)
 	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
-	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeInformer, nodeClient)
+	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeLister, nodeClient)
 	watchdogStop := make(chan struct{}, 1)
 	go nodeLabeler.Start(watchdogStop)
 

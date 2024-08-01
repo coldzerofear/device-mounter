@@ -29,9 +29,7 @@ metadata:
   name: device-mounter-apiserver
   namespace: kube-system
 data:
-  tls-profile-v1alpha1: |
-    type: Intermediate
-    intermediate: {}
+  tls-profile-v1alpha1: "{}"
 ---
 apiVersion: v1
 kind: ServiceAccount

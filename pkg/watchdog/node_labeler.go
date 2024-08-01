@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
@@ -31,12 +30,11 @@ type nodeLabeler struct {
 	listerv1.NodeLister
 }
 
-func NewNodeLabeler(nodeName string, nodeInformer cache.SharedIndexInformer, kubeClient *kubernetes.Clientset) *nodeLabeler {
-	lister := listerv1.NewNodeLister(nodeInformer.GetIndexer())
+func NewNodeLabeler(nodeName string, nodeLister listerv1.NodeLister, kubeClient *kubernetes.Clientset) *nodeLabeler {
 	return &nodeLabeler{
 		nodeName:   nodeName,
 		kubeClient: kubeClient,
-		NodeLister: lister,
+		NodeLister: nodeLister,
 		stopped:    make(chan struct{}, 1),
 	}
 }

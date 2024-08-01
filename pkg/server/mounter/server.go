@@ -25,6 +25,7 @@ type DeviceMounterImpl struct {
 	NodeName   string
 	KubeClient *kubernetes.Clientset
 	Recorder   record.EventRecorder
+	NodeLister listerv1.NodeLister
 	PodLister  listerv1.PodLister
 	IsCGroupV2 bool
 }
@@ -85,13 +86,15 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 
 	// 查询node
-	node, err := s.KubeClient.CoreV1().Nodes().Get(ctx, s.NodeName, metav1.GetOptions{})
+	node, err := s.NodeLister.Get(s.NodeName)
 	if err != nil {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
 			Message: err.Error(),
 		}, nil
 	}
+
+	node = node.DeepCopy()
 	kubeConfig := client.GetKubeConfig("")
 	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 

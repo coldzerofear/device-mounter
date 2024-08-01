@@ -68,7 +68,9 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 	}
 
 	pod, err := s.kubeClient.CoreV1().Pods(params.namespace).
-		Get(context.TODO(), params.name, metav1.GetOptions{})
+		Get(context.TODO(), params.name, metav1.GetOptions{
+			ResourceVersion: "0",
+		})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_ = response.WriteError(http.StatusNotFound, fmt.Errorf("target pod does not exist: %w", err))
@@ -200,7 +202,9 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 		return
 	}
 	pod, err := s.kubeClient.CoreV1().Pods(params.namespace).
-		Get(context.TODO(), params.name, metav1.GetOptions{})
+		Get(context.TODO(), params.name, metav1.GetOptions{
+			ResourceVersion: "0",
+		})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_ = response.WriteError(http.StatusNotFound, fmt.Errorf("target pod does not exist: %w", err))
