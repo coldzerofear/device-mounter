@@ -18,6 +18,8 @@ import (
 )
 
 var (
+	defaultQPS         = float32(20)
+	defaultBurst       = int(defaultQPS * 2)
 	onceInitKubeClient sync.Once
 	kubeConfigPath     string
 	kubeConfig         *rest.Config
@@ -30,6 +32,8 @@ func initConfigAndClient(kubeconfigPath string) error {
 	if err != nil {
 		return err
 	}
+	kubeConfig.QPS = defaultQPS
+	kubeConfig.Burst = defaultBurst
 	kubeClient, err = kubernetes.NewForConfig(kubeConfig)
 	return err
 }
