@@ -10,6 +10,8 @@ const (
 	DeviceTypeAnnotationKey = v1alpha1.Group + "/device-type"
 	// 在原有基础上扩容，目前仅支持： volcano vgpu
 	ExpansionAnnotationKey = v1alpha1.Group + "/expansion"
+	// 快速分配并占用设备
+	FastAllocateAnnotationKey = v1alpha1.Group + "/fast-allocate"
 )
 
 const (
@@ -24,5 +26,5 @@ const (
 )
 
 func AnnoIsExpansion(annos map[string]string) bool {
-	return annos != nil && strings.ToLower(annos[ExpansionAnnotationKey]) == "true"
+	return annos != nil && strings.EqualFold(strings.TrimSpace(annos[ExpansionAnnotationKey]), "true")
 }

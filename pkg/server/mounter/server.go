@@ -263,11 +263,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	}
 	_ = GarbageCollectionPods(ctx, s.KubeClient, skipPodKeys)
 	// 挂载成功发送event
-	s.Recorder.Event(pod, v1.EventTypeNormal, "MountDevice", fmt.Sprintf("Successfully mounted %s device", deviceType))
+	message := fmt.Sprintf("Successfully mounted %s devices", deviceType)
+	s.Recorder.Event(pod, v1.EventTypeNormal, "MountDevice", message)
 	klog.Infoln("MountDevice Successfully")
 	return &api.DeviceResponse{
 		Result:  api.ResultCode_Success,
-		Message: "Successfully mounted device",
+		Message: message,
 	}, nil
 }
 
@@ -416,10 +417,11 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 	// TODO 暂时忽略删除失败 （有资源泄漏风险）
 	_ = GarbageCollectionPods(ctx, s.KubeClient, gcPodKeys)
 	// 卸载成功发送event
-	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", fmt.Sprintf("Successfully uninstalled %s device", deviceType))
+	message := fmt.Sprintf("Successfully uninstalled %s devices", deviceType)
+	s.Recorder.Event(pod, v1.EventTypeNormal, "UnMountDevice", message)
 	klog.Infoln("UnMountDevice Successfully")
 	return &api.DeviceResponse{
 		Result:  api.ResultCode_Success,
-		Message: "Successfully uninstalled device",
+		Message: message,
 	}, nil
 }

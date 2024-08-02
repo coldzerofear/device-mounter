@@ -119,7 +119,7 @@ func main() {
 	}
 	klog.Infoln("Successfully registered mounts include", deviceTypes)
 
-	klog.Infoln("Starting watchdog...")
+	klog.Infoln("Watchdog Starting...")
 	kubeConfig = client.GetKubeConfig(KubeConfig)
 	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeLister, nodeClient)

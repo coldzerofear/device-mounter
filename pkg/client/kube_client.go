@@ -3,6 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,13 +17,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
 
 var (
-	defaultQPS         = float32(20)
+	defaultQPS         = float32(100)
 	defaultBurst       = int(defaultQPS * 2)
 	defaultTimeout     = 10 * time.Second
 	onceInitKubeClient sync.Once
@@ -36,8 +42,46 @@ func initConfigAndClient(kubeconfigPath string) error {
 	kubeConfig.QPS = defaultQPS
 	kubeConfig.Burst = defaultBurst
 	kubeConfig.Timeout = defaultTimeout
+	kubeConfig.UserAgent = userAgent()
+	kubeConfig.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	kubeConfig.ContentType = "application/vnd.kubernetes.protobuf"
 	kubeClient, err = kubernetes.NewForConfig(kubeConfig)
 	return err
+}
+
+func userAgent() string {
+	return fmt.Sprintf(
+		"%s/%s (%s/%s) kubernetes/%s",
+		adjustCommand(os.Args[0]),
+		adjustVersion(version.Get().GitVersion),
+		runtime.GOOS, runtime.GOARCH,
+		adjustCommit(version.Get().GitCommit))
+}
+
+func adjustCommand(p string) string {
+	// Unlikely, but better than returning "".
+	if len(p) == 0 {
+		return "unknown"
+	}
+	return filepath.Base(p)
+}
+
+func adjustVersion(v string) string {
+	if len(v) == 0 {
+		return "unknown"
+	}
+	seg := strings.SplitN(v, "-", 2)
+	return seg[0]
+}
+
+func adjustCommit(c string) string {
+	if len(c) == 0 {
+		return "unknown"
+	}
+	if len(c) > 7 {
+		return c[:7]
+	}
+	return c
 }
 
 func GetKubeClient(kubeconfigPath string) *kubernetes.Clientset {
@@ -57,7 +101,10 @@ func GetKubeConfig(kubeconfigPath string) *rest.Config {
 			klog.Exitf("K8s Config initialization failed: %v", err)
 		}
 	})
-	return rest.CopyConfig(kubeConfig)
+	config := rest.CopyConfig(kubeConfig)
+	kubeConfig.QPS = 0
+	kubeConfig.Burst = 0
+	return config
 }
 
 func RetryGetPodByName(kubeClient *kubernetes.Clientset, name, namespace string, retryCount uint) (*v1.Pod, error) {
