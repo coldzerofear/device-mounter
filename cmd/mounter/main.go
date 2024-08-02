@@ -74,16 +74,11 @@ func main() {
 
 	klog.Infoln("Initialize the informer factory...")
 	resyncConfig := informers.WithCustomResyncConfig(map[metav1.Object]time.Duration{
-		//&v1.Node{}: 30 * time.Minute, &v1.Pod{}: 5 * time.Minute,
+		&v1.Node{}: 30 * time.Minute, &v1.Pod{}: 5 * time.Minute,
 	})
-	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, resyncConfig)
-	podInformer := informerFactory.InformerFor(&v1.Pod{},
-		func(k kubernetes.Interface, duration time.Duration) cache.SharedIndexInformer {
-			return cache.NewSharedIndexInformer(cache.NewListWatchFromClient(
-				k.CoreV1().RESTClient(), "pods", metav1.NamespaceAll,
-				fields.OneTermEqualSelector("spec.nodeName", nodeName)), &v1.Pod{},
-				duration, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-		})
+	transform := informers.WithTransform(cache2.TransformStripManagedFields())
+	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, resyncConfig, transform)
+	podInformer := initPodInformer(informerFactory, nodeName)
 	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("pod informer watch error: %v", err)
 	})
@@ -91,8 +86,6 @@ func main() {
 	_ = nodeInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("node informer watch error: %v", err)
 	})
-	_ = podInformer.SetTransform(cache2.TransformStripManagedFields())
-	_ = nodeInformer.SetTransform(cache2.TransformStripManagedFields())
 	stopCh := make(chan struct{})
 	informerFactory.Start(stopCh)
 	informerFactory.WaitForCacheSync(stopCh)
@@ -174,6 +167,23 @@ func main() {
 	nodeLabeler.Done()
 	klog.Infoln("Service stopped, please restart the service")
 	os.Exit(exitCode)
+}
+
+func initPodInformer(factory informers.SharedInformerFactory, nodeName string) cache.SharedIndexInformer {
+	return factory.InformerFor(&v1.Pod{}, func(k kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+		return cache.NewSharedIndexInformer(
+			cache.NewListWatchFromClient(
+				k.CoreV1().RESTClient(),
+				"pods",
+				metav1.NamespaceAll,
+				fields.OneTermEqualSelector("spec.nodeName", nodeName),
+			),
+			&v1.Pod{},
+			resyncPeriod,
+			cache.Indexers{
+				cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
+			})
+	})
 }
 
 func StartTcpService(server api.DeviceMountServiceServer, stopCh chan<- struct{}) (*grpc.Server, error) {
