@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"k8s-device-mounter/pkg/config"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/server/mounter"
+	"k8s-device-mounter/pkg/versions"
 	"k8s-device-mounter/pkg/watchdog"
 
 	// init device mounter
@@ -36,6 +38,7 @@ import (
 )
 
 var (
+	version     bool
 	TCPBindPort = ":1200"
 	SocketPath  = "/var/run/k8s-device-mounter"
 	KubeConfig  = ""
@@ -43,18 +46,22 @@ var (
 
 func initFlags() {
 	klog.InitFlags(nil)
+	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
 	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default :1200)")
 	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
 	flag.StringVar(&SocketPath, "socket-path", SocketPath, "Specify the directory where the socket file is located (default /var/run/k8s-device-mounter)")
 
 	flag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container (default alpine:latest)")
 	flag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container (default IfNotPresent)")
-
 }
 
 func main() {
 	initFlags()
 	flag.Parse()
+	if version {
+		fmt.Printf("DeviceMounter version: %s \n", versions.AdjustVersion(versions.BuildVersion))
+		return
+	}
 
 	nodeName := os.Getenv("NODE_NAME")
 	if strings.TrimSpace(nodeName) == "" {

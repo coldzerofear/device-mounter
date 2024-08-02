@@ -5,19 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
 	"k8s-device-mounter/pkg/util"
+	"k8s-device-mounter/pkg/versions"
 	v1 "k8s.io/api/core/v1"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/version"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
@@ -52,36 +50,10 @@ func initConfigAndClient(kubeconfigPath string) error {
 func userAgent() string {
 	return fmt.Sprintf(
 		"%s/%s (%s/%s) kubernetes/%s",
-		adjustCommand(os.Args[0]),
-		adjustVersion(version.Get().GitVersion),
+		versions.AdjustCommand(os.Args[0]),
+		versions.AdjustVersion(versions.BuildVersion),
 		runtime.GOOS, runtime.GOARCH,
-		adjustCommit(version.Get().GitCommit))
-}
-
-func adjustCommand(p string) string {
-	// Unlikely, but better than returning "".
-	if len(p) == 0 {
-		return "unknown"
-	}
-	return filepath.Base(p)
-}
-
-func adjustVersion(v string) string {
-	if len(v) == 0 {
-		return "unknown"
-	}
-	seg := strings.SplitN(v, "-", 2)
-	return seg[0]
-}
-
-func adjustCommit(c string) string {
-	if len(c) == 0 {
-		return "unknown"
-	}
-	if len(c) > 7 {
-		return c[:7]
-	}
-	return c
+		versions.AdjustCommit(versions.BuildCommit))
 }
 
 func GetKubeClient(kubeconfigPath string) *kubernetes.Clientset {

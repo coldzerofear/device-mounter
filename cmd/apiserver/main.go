@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"net/http"
 
 	"github.com/emicklei/go-restful/v3"
@@ -13,6 +14,7 @@ import (
 	"k8s-device-mounter/pkg/filewatch"
 	"k8s-device-mounter/pkg/server/apiserver"
 	"k8s-device-mounter/pkg/tlsconfig"
+	"k8s-device-mounter/pkg/versions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -28,6 +30,7 @@ const (
 )
 
 var (
+	version          bool
 	KubeConfig       = ""
 	TCPBindPort      = ":8768"
 	MounterBindPort  = ":1200"
@@ -37,6 +40,7 @@ var (
 
 func initFlags() {
 	klog.InitFlags(nil)
+	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
 	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
 	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default \":8768\")")
 
@@ -48,6 +52,10 @@ func initFlags() {
 func main() {
 	initFlags()
 	flag.Parse()
+	if version {
+		fmt.Printf("DeviceAPIServer version: %s \n", versions.AdjustVersion(versions.BuildVersion))
+		return
+	}
 
 	kubeClient := client.GetKubeClient(KubeConfig)
 	authConfigReader, err := authConfig.CreateReader(kubeClient.CoreV1().RESTClient())
