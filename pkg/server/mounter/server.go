@@ -99,7 +99,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 
 	// 校验设备资源
-	result, msg, ok := deviceMounter.CheckMountResources(kubeClient, node, pod, container, resources, req.GetAnnotations())
+	result, msg, ok := deviceMounter.CheckMountResources(kubeClient, node, pod, container, resources, req.GetAnnotations(), req.GetLabels())
 	if !ok || result != api.ResultCode_Success {
 		return &api.DeviceResponse{
 			Result:  result,
@@ -110,7 +110,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 构建slave pods
 	// 查找历史同类型的slave pods
 	slavePods, _ := s.GetSlavePods(deviceType, pod, container)
-	slavePods, err = deviceMounter.BuildDeviceSlavePodTemplates(pod, container, resources, req.GetAnnotations(), slavePods)
+	slavePods, err = deviceMounter.BuildDeviceSlavePodTemplates(pod, container, resources, req.GetAnnotations(), req.GetLabels(), slavePods)
 	if err != nil {
 		klog.V(3).ErrorS(err, "Build device slave pods failed")
 		return &api.DeviceResponse{

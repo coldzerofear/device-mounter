@@ -103,6 +103,7 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		PodNamespace:   params.namespace,
 		Resources:      params.Resources,
 		Annotations:    params.Annotations,
+		Labels:         params.Labels,
 		Container:      cont,
 		DeviceType:     params.deviceType,
 		TimeoutSeconds: params.timeoutSeconds,

@@ -92,6 +92,9 @@ func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
 	if req.GetAnnotations() == nil {
 		req.Annotations = make(map[string]string)
 	}
+	if req.GetLabels() == nil {
+		req.Labels = make(map[string]string)
+	}
 	return nil
 }
 

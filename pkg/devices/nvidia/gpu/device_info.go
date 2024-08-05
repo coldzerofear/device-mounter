@@ -57,7 +57,7 @@ func (m *NvidiaGPUMounter) CheckMountResources(
 	_ *v1.Pod,
 	_ *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
-	_ map[string]string) (api.ResultCode, string, bool) {
+	_, _ map[string]string) (api.ResultCode, string, bool) {
 
 	if !util.CheckResourcesInSlice(request, []string{ResourceName}, nil) {
 		return api.ResultCode_Fail, "Request for resources error", false
@@ -72,7 +72,7 @@ func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(
 	ownerPod *v1.Pod,
 	_ *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
-	annotations map[string]string,
+	annotations, labels map[string]string,
 	_ []*v1.Pod) ([]*v1.Pod, error) {
 
 	quantity := request[ResourceName]
@@ -82,7 +82,7 @@ func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(
 	}
 	var slavePods []*v1.Pod
 	for i := int64(0); i < gpuNumber; i++ {
-		slavePod := util.NewDeviceSlavePod(ownerPod, limits, annotations)
+		slavePod := util.NewDeviceSlavePod(ownerPod, limits, annotations, labels)
 		// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
 		env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
 		slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)

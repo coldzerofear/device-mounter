@@ -20,8 +20,8 @@ message MountDeviceRequest {
   Container           container       = 3;
   map<string, string> resources       = 4;
   map<string, string> annotations     = 5;
-  string              device_type     = 6;
-  bool                is_entire_mount = 7;
+  map<string, string> labels          = 6;
+  string              device_type     = 7;
   uint32              timeout_seconds = 8;
   repeated string     patches         = 9;
 }

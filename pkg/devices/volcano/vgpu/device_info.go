@@ -59,7 +59,7 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 	ownerPod *v1.Pod,
 	container *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
-	annotations map[string]string) (api.ResultCode, string, bool) {
+	annotations, labels map[string]string) (api.ResultCode, string, bool) {
 
 	if !util.CheckResourcesInSlice(request, []string{VolcanoVGPUNumber},
 		[]string{VolcanoVGPUMemory, VolcanoVGPUCores, VolcanoVGPUMemoryPercentage}) {
@@ -98,7 +98,13 @@ func (m *VolcanoVGPUMounter) CheckMountResources(
 }
 
 // 构建要创建的奴隶pod模板
-func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations map[string]string, slavePods []*v1.Pod) ([]*v1.Pod, error) {
+func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(
+	ownerPod *v1.Pod,
+	container *api.Container,
+	request map[v1.ResourceName]resource.Quantity,
+	annotations, labels map[string]string,
+	slavePods []*v1.Pod) ([]*v1.Pod, error) {
+
 	var podDevices []ContainerDevices
 	expansion := config.AnnoIsExpansion(annotations)
 	str, hasVGPU := ownerPod.Annotations[AssignedIDsAnnotations]
@@ -137,7 +143,7 @@ func (m *VolcanoVGPUMounter) BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, cont
 	}
 
 	// TODO volcano vgpu 不考虑分多个pod申请资源
-	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations, labels)
 	// TODO 让创建出来的slave pod只占用gpu，不包含设备文件
 	env := v1.EnvVar{Name: NVIDIA_VISIBLE_DEVICES_ENV, Value: "none"}
 	slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)

@@ -60,6 +60,9 @@ Body Param:
     "annotations": { // slave pod annotation
         "device-mounter.io/expansion":"true"
     },
+    "labels": { // slave pod labels
+      "app":"slave-pod"
+    },
     "patches": [   // json patch rules
       "{\"op\":\"replace\",\"path\":\"/spec/schedulerName\",\"value\": \"volcano\"}"
     ]

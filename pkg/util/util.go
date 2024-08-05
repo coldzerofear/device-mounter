@@ -87,13 +87,14 @@ func CheckResourcesInSlice(resources map[v1.ResourceName]resource.Quantity, slic
 	return true
 }
 
-func NewDeviceSlavePod(ownerPod *v1.Pod, limits map[v1.ResourceName]resource.Quantity, annotations map[string]string) *v1.Pod {
+func NewDeviceSlavePod(ownerPod *v1.Pod, limits map[v1.ResourceName]resource.Quantity, annotations, labels map[string]string) *v1.Pod {
 	namePrefix := fmt.Sprintf("%s-device-slave-", ownerPod.Name)
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			//Name:      ownerPod.Name + "-slave-pod-" + randID,
 			GenerateName: namePrefix,
 			Annotations:  annotations,
+			Labels:       labels,
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{

@@ -17,9 +17,9 @@ type DeviceMounter interface {
 	DeviceType() string
 
 	// 校验挂载资源时的 请求参数 和 节点资源
-	CheckMountResources(kubeClient *kubernetes.Clientset, node *v1.Node, ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations map[string]string) (api.ResultCode, string, bool)
+	CheckMountResources(kubeClient *kubernetes.Clientset, node *v1.Node, ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations, labels map[string]string) (api.ResultCode, string, bool)
 	// 构建要创建的奴隶pod模板
-	BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations map[string]string, oldSlavePods []*v1.Pod) ([]*v1.Pod, error)
+	BuildDeviceSlavePodTemplates(ownerPod *v1.Pod, container *api.Container, request map[v1.ResourceName]resource.Quantity, annotations, labels map[string]string, oldSlavePods []*v1.Pod) ([]*v1.Pod, error)
 	// 校验从属pod状态是否成功
 	CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.StatusCode, error)
 

@@ -75,7 +75,7 @@ func (m *AscendNPUMounter) CheckMountResources(
 	ownerPod *v1.Pod,
 	container *api.Container,
 	resources map[v1.ResourceName]resource.Quantity,
-	annotations map[string]string) (api.ResultCode, string, bool) {
+	annotations, labels map[string]string) (api.ResultCode, string, bool) {
 
 	condition1 := CheckRequest910Resources(resources)
 	condition2 := CheckRequestDynamicResources(resources, annotations)
@@ -98,10 +98,10 @@ func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(
 	ownerPod *v1.Pod,
 	_ *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
-	annotations map[string]string,
+	annotations, labels map[string]string,
 	_ []*v1.Pod) ([]*v1.Pod, error) {
 
-	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations)
+	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations, labels)
 	// TODO slave pod 不用挂载驱动目录
 	env := v1.EnvVar{Name: AscendRuntimeOptionsEnv, Value: "NODRV"}
 	slavePod.Spec.Containers[0].Env = append(slavePod.Spec.Containers[0].Env, env)
