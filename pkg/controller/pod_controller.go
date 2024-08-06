@@ -159,7 +159,11 @@ func (c *slavePodController) OnUpdate(oldObj, newObj interface{}) {
 func (c *slavePodController) OnDelete(obj interface{}) {
 	switch v := obj.(type) {
 	case cache.DeletedFinalStateUnknown:
-		c.updateCache.Delete(v.Key)
+		if pod, ok := v.Obj.(*v1.Pod); ok {
+			c.updateCache.Delete(client.ObjectKeyFromObject(pod).String())
+		} else {
+			c.updateCache.Delete(v.Key)
+		}
 	case *v1.Pod:
 		c.updateCache.Delete(client.ObjectKeyFromObject(v).String())
 	default:
