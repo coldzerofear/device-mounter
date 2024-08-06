@@ -16,6 +16,7 @@ const (
 
 const (
 	CreatedByLabelKey      = v1alpha1.Group + "/created-by"
+	OwnerNameLabelKey      = v1alpha1.Group + "/owner-name"
 	OwnerUidLabelKey       = v1alpha1.Group + "/owner-uid"
 	MountContainerLabelKey = v1alpha1.Group + "/mounted-container"
 
@@ -23,6 +24,8 @@ const (
 	AppManagedByLabelKey = "app.kubernetes.io/managed-by"
 	AppCreatedByLabelKey = "app.kubernetes.io/created-by"
 	AppInstanceLabelKey  = "app.kubernetes.io/instance"
+
+	CreateManagerBy = "k8s-device-mounter"
 )
 
 func AnnoIsExpansion(annos map[string]string) bool {

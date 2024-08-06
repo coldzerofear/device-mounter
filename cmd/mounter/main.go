@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/config"
+	"k8s-device-mounter/pkg/controller"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/server/mounter"
 	"k8s-device-mounter/pkg/versions"
@@ -89,6 +91,8 @@ func main() {
 	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("pod informer watch error: %v", err)
 	})
+	podController := controller.NewPodController("PodController", podInformer)
+	_, _ = podInformer.AddEventHandler(podController)
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
 	_ = nodeInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("node informer watch error: %v", err)
@@ -96,6 +100,8 @@ func main() {
 	stopCh := make(chan struct{})
 	informerFactory.Start(stopCh)
 	informerFactory.WaitForCacheSync(stopCh)
+	ctx, cancelFunc := context.WithCancel(context.TODO())
+	go podController.Start(ctx, 1)
 
 	klog.Infoln("Initialize the event recorder...")
 	kubeConfig := client.GetKubeConfig(KubeConfig)
@@ -170,6 +176,7 @@ func main() {
 		klog.Infoln("Shutting down grpc unix service...")
 		s2.GracefulStop()
 	}
+	cancelFunc() // 关闭controller
 	close(watchdogStop)
 	nodeLabeler.Done()
 	klog.Infoln("Service stopped, please restart the service")

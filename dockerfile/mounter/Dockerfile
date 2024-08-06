@@ -1,9 +1,6 @@
 # Build the mounter binary
 FROM registry.tydic.com/ubuntu/ubuntu:20.04 as builder
 
-ARG BUILDVERSION
-ARG BUILDCOMMIT
-
 ARG TARGETARCH=amd64
 ARG TARGETOS=linux
 
@@ -22,6 +19,9 @@ ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
 ENV GO111MODULE on
 ENV GOPROXY https://goproxy.cn,direct
+
+ARG BUILDVERSION
+ARG BUILDCOMMIT
 
 WORKDIR /go/src/k8s-device-mounter
 
@@ -47,7 +47,9 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
     CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files'  \
-    go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack -X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
+    go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack \
+    -X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
+    -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/mounter cmd/mounter/main.go
 
 FROM registry.tydic.com/ubuntu/ubuntu:24.04

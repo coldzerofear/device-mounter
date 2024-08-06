@@ -36,6 +36,12 @@ func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.Condi
 	return err
 }
 
+func CopyMap[K comparable, V any](src, dst map[K]V) {
+	for k, v := range src {
+		dst[k] = v
+	}
+}
+
 func DeleteSliceFunc[S ~[]E, E any](s S, filter func(E) bool) S {
 	if s == nil {
 		return s

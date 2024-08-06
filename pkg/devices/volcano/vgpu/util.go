@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/keymutex"
 )
 
 const (
@@ -293,14 +295,18 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
+var vgpuCacheLock = keymutex.NewHashed(runtime.NumCPU() * 2)
+
 func MutationCacheFunc(cacheDir string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
 	cacheConfig, data, err := mmapVGPUCacheConfig(cacheDir)
 	if err != nil {
 		return err
 	}
+	//vgpuCacheLock.LockKey(cacheDir)
 	lock.Lock(cacheDir)
 	defer func() {
+		//vgpuCacheLock.UnlockKey(cacheDir)
 		lock.Unlock(cacheDir)
 		if data != nil {
 			err = syscall.Munmap(data)

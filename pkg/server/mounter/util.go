@@ -219,6 +219,7 @@ func Owner(pod *v1.Pod) []metav1.OwnerReference {
 
 func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, container *api.Container) ([]*v1.Pod, error) {
 	selector := labels.SelectorFromSet(labels.Set{
+		config.OwnerNameLabelKey:      ownerPod.Name,
 		config.OwnerUidLabelKey:       string(ownerPod.UID),
 		config.MountContainerLabelKey: container.Name,
 	})
@@ -242,8 +243,8 @@ func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, owner
 	pdb.Name = ownerPod.Name
 	pdb.Namespace = ownerPod.Namespace
 	pdb.Labels = map[string]string{
-		config.AppComponentLabelKey: "k8s-device-mounter",
-		config.AppManagedByLabelKey: "k8s-device-mounter",
+		config.AppComponentLabelKey: config.CreateManagerBy,
+		config.AppManagedByLabelKey: config.CreateManagerBy,
 	}
 	pdb.OwnerReferences = Owner(ownerPod)
 	// TODO 确保至少有1个Pod副本在任何中断期间都是可用的 (防止资源泄漏)
@@ -296,11 +297,12 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 	mutaPod.Annotations[config.DeviceTypeAnnotationKey] = devType
 
 	mutaPod.Spec.NodeSelector["kubernetes.io/hostname"] = s.NodeName
+	mutaPod.Labels[config.OwnerNameLabelKey] = ownerPod.Name
 	mutaPod.Labels[config.OwnerUidLabelKey] = string(ownerPod.UID)
 	mutaPod.Labels[config.CreatedByLabelKey] = uuid.New().String()
 	mutaPod.Labels[config.MountContainerLabelKey] = container.Name
-	mutaPod.Labels[config.AppComponentLabelKey] = "k8s-device-mounter"
-	mutaPod.Labels[config.AppManagedByLabelKey] = "k8s-device-mounter"
+	mutaPod.Labels[config.AppComponentLabelKey] = config.CreateManagerBy
+	mutaPod.Labels[config.AppManagedByLabelKey] = config.CreateManagerBy
 	mutaPod.OwnerReferences = Owner(ownerPod)
 	for i, _ := range mutaPod.Spec.Containers {
 		mutaPod.Spec.Containers[i].Image = config.DeviceSlaveContainerImageTag

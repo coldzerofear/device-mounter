@@ -32,7 +32,8 @@ COPY pkg/ pkg/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  go build -a \
-    -ldflags="-X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
+    -ldflags="-X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
+    -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/apiserver cmd/apiserver/main.go
 
 FROM registry.tydic.com/alpine/alpine:latest
