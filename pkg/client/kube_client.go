@@ -24,7 +24,7 @@ import (
 var (
 	defaultQPS         = float32(100)
 	defaultBurst       = int(defaultQPS * 2)
-	defaultTimeout     = 10 * time.Second
+	defaultTimeout     = 30 * time.Second
 	onceInitKubeClient sync.Once
 	kubeConfigPath     string
 	kubeConfig         *rest.Config
@@ -39,7 +39,7 @@ func initConfigAndClient(kubeconfigPath string) error {
 	}
 	kubeConfig.QPS = defaultQPS
 	kubeConfig.Burst = defaultBurst
-	kubeConfig.Timeout = defaultTimeout
+	//kubeConfig.Timeout = defaultTimeout
 	kubeConfig.UserAgent = userAgent()
 	kubeConfig.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
 	kubeConfig.ContentType = "application/vnd.kubernetes.protobuf"
@@ -74,6 +74,7 @@ func GetKubeConfig(kubeconfigPath string) *rest.Config {
 		}
 	})
 	config := rest.CopyConfig(kubeConfig)
+	kubeConfig.Timeout = defaultTimeout
 	kubeConfig.QPS = 0
 	kubeConfig.Burst = 0
 	return config
