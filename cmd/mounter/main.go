@@ -126,10 +126,7 @@ func main() {
 	if err := framework.RegisrtyDeviceMounter(); err != nil {
 		klog.Exit(err.Error())
 	}
-	var deviceTypes []string
-	for _, mount := range framework.RegisterDeviceMounter {
-		deviceTypes = append(deviceTypes, mount.DeviceType())
-	}
+	deviceTypes := framework.GetDeviceMounterTypes()
 	klog.Infoln("Successfully registered mounts include", deviceTypes)
 
 	klog.Infoln("Watchdog Starting...")

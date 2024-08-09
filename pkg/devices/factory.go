@@ -13,7 +13,7 @@ var _ framework.DeviceMounter = &volcano_vgpu.VolcanoVGPUMounter{}
 var _ framework.DeviceMounter = &ascend_npu.AscendNPUMounter{}
 
 func init() {
-	framework.AddDeviceMounterFuncs = append(framework.AddDeviceMounterFuncs, nvidia_gpu.NewNvidiaGPUMounter)
-	framework.AddDeviceMounterFuncs = append(framework.AddDeviceMounterFuncs, volcano_vgpu.NewVolcanoVGPUMounter)
-	framework.AddDeviceMounterFuncs = append(framework.AddDeviceMounterFuncs, ascend_npu.NewAscendNPUMounter)
+	framework.AddDeviceMounterFuncs(nvidia_gpu.NewNvidiaGPUMounter)
+	framework.AddDeviceMounterFuncs(volcano_vgpu.NewVolcanoVGPUMounter)
+	framework.AddDeviceMounterFuncs(ascend_npu.NewAscendNPUMounter)
 }

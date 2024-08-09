@@ -2,9 +2,9 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	client2 "k8s-device-mounter/pkg/client"
@@ -23,69 +23,61 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+type slavePodController struct {
+	name             string
+	client           *kubernetes.Clientset
+	podLister        listerv1.PodLister
+	podAddQueue      workqueue.RateLimitingInterface
+	metadataFixQueue workqueue.RateLimitingInterface
+	metadataCache    MetadataCache
+}
+
+var _ cache.ResourceEventHandler = &slavePodController{}
+
 func NewPodController(name string, podInformer cache.SharedIndexInformer) *slavePodController {
 	kubeConfig := client2.GetKubeConfig("")
 	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	return &slavePodController{
-		name:           name,
-		client:         kubeClient,
-		podLister:      listerv1.NewPodLister(podInformer.GetIndexer()),
-		podAddQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		podUpdateQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		updateCache:    updateCache{},
+		name:             name,
+		client:           kubeClient,
+		podLister:        listerv1.NewPodLister(podInformer.GetIndexer()),
+		podAddQueue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		metadataFixQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		metadataCache:    MetadataCache{},
 	}
 }
 
-type UpdateRequest struct {
-	Labels          map[string]string       `json:"labels,omitempty"`
-	Annotations     map[string]string       `json:"annotations,omitempty"`
-	OwnerReferences []metav1.OwnerReference `json:"ownerReferences,omitempty"`
-}
-
-type updateCache struct {
-	sync.Map
-}
-
-func (u *updateCache) Done(key string, old UpdateRequest) {
-	data, _ := json.Marshal(old)
-	u.CompareAndDelete(key, string(data))
-}
-
-func (u *updateCache) Set(key string, obj UpdateRequest) {
-	data, _ := json.Marshal(obj)
-	_, ok := u.LoadOrStore(key, string(data))
-	if ok {
-		u.Store(key, string(data))
+var (
+	podLabelKeys = []string{
+		config.OwnerNameLabelKey, config.OwnerUidLabelKey,
+		config.CreatedByLabelKey, config.MountContainerLabelKey,
 	}
-}
-
-func (u *updateCache) Get(key string) (UpdateRequest, bool) {
-	load, ok := u.Load(key)
-	update := UpdateRequest{}
-	if ok {
-		_ = json.Unmarshal([]byte(load.(string)), &update)
+	podAnnoKeys = []string{
+		config.DeviceTypeAnnotationKey,
+		config.ContainerIdAnnotationKey,
 	}
-	return update, ok
-}
-
-type slavePodController struct {
-	name           string
-	client         *kubernetes.Clientset
-	podLister      listerv1.PodLister
-	podAddQueue    workqueue.RateLimitingInterface
-	podUpdateQueue workqueue.RateLimitingInterface
-	updateCache    updateCache
-}
-
-var _ cache.ResourceEventHandler = &slavePodController{}
+)
 
 func (c *slavePodController) OnAdd(obj interface{}, isInInitialList bool) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
 		return
 	}
-	_, ok = pod.Annotations[config.DeviceTypeAnnotationKey]
-	if !ok {
+	if len(pod.Labels) == 0 || len(pod.Annotations) == 0 {
+		return
+	}
+	containsKeys := func(keys []string, maps map[string]string) bool {
+		for _, key := range keys {
+			if _, ok := maps[key]; !ok {
+				return false
+			}
+		}
+		return true
+	}
+	if !containsKeys(podAnnoKeys, pod.Annotations) {
+		return
+	}
+	if !containsKeys(podLabelKeys, pod.Labels) {
 		return
 	}
 	if pod.Labels[config.AppComponentLabelKey] != config.CreateManagerBy {
@@ -96,12 +88,6 @@ func (c *slavePodController) OnAdd(obj interface{}, isInInitialList bool) {
 	}
 	c.podAddQueue.Add(client.ObjectKeyFromObject(pod))
 }
-
-var (
-	podLabelKeys = []string{config.OwnerNameLabelKey, config.OwnerUidLabelKey,
-		config.CreatedByLabelKey, config.MountContainerLabelKey}
-	podAnnoKeys = []string{config.DeviceTypeAnnotationKey}
-)
 
 func (c *slavePodController) OnUpdate(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*v1.Pod)
@@ -115,57 +101,47 @@ func (c *slavePodController) OnUpdate(oldObj, newObj interface{}) {
 	if !ok {
 		return
 	}
+	c.metadataFixEnqueue(oldPod, newPod)
+}
+
+func (c *slavePodController) metadataFixEnqueue(oldPod, newPod *v1.Pod) {
 	// resync skip
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
 		return
 	}
-	if newPod.Labels == nil {
-		newPod.Labels = map[string]string{}
+	metadata := Metadata{}
+	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
+		metadata.Labels = oldPod.Labels
 	}
-	if newPod.Annotations == nil {
-		newPod.Annotations = map[string]string{}
+	if !reflect.DeepEqual(oldPod.Annotations, newPod.Annotations) {
+		metadata.Annotations = oldPod.Annotations
 	}
-	comparableKeys := func(old, new, result map[string]string, keys []string) {
-		for _, key := range keys {
-			val, ok := old[key]
-			if !ok {
-				continue
-			}
-			if new[key] != val {
-				result[key] = val
-			}
-		}
-	}
-	labels := make(map[string]string)
-	comparableKeys(oldPod.Labels, newPod.Labels, labels, podLabelKeys)
-	annos := make(map[string]string)
-	comparableKeys(oldPod.Annotations, newPod.Annotations, annos, podAnnoKeys)
-	var references []metav1.OwnerReference
 	if !reflect.DeepEqual(oldPod.OwnerReferences, newPod.OwnerReferences) {
-		references = oldPod.OwnerReferences
+		metadata.OwnerReferences = oldPod.OwnerReferences
 	}
-	if len(labels) == 0 && len(annos) == 0 && len(references) == 0 {
-		return
+	if !reflect.DeepEqual(metadata, Metadata{}) {
+		key := client.ObjectKeyFromObject(oldPod)
+		c.metadataCache.Set(key, metadata)
+		c.metadataFixQueue.Add(key)
 	}
-	objKey := client.ObjectKeyFromObject(newPod)
-	c.updateCache.Set(objKey.String(), UpdateRequest{
-		Labels:          labels,
-		Annotations:     annos,
-		OwnerReferences: references,
-	})
-	c.podUpdateQueue.Add(objKey)
 }
 
 func (c *slavePodController) OnDelete(obj interface{}) {
 	switch v := obj.(type) {
 	case cache.DeletedFinalStateUnknown:
 		if pod, ok := v.Obj.(*v1.Pod); ok {
-			c.updateCache.Delete(client.ObjectKeyFromObject(pod).String())
+			c.metadataCache.Delete(client.ObjectKeyFromObject(pod))
 		} else {
-			c.updateCache.Delete(v.Key)
+			splits := strings.Split(v.Key, string(types.Separator))
+			if len(splits) == 2 {
+				c.metadataCache.Delete(client.ObjectKey{
+					Namespace: splits[0],
+					Name:      splits[1],
+				})
+			}
 		}
 	case *v1.Pod:
-		c.updateCache.Delete(client.ObjectKeyFromObject(v).String())
+		c.metadataCache.Delete(client.ObjectKeyFromObject(v))
 	default:
 		klog.V(4).Infof("OnDelete(obj) unknow type: %v", v)
 	}
@@ -176,7 +152,7 @@ func (c *slavePodController) Start(ctx context.Context, workerNum int) {
 		<-ctx.Done()
 		klog.Infoln(c.name, "is stopping...")
 		c.podAddQueue.ShutDown()
-		c.podUpdateQueue.ShutDown()
+		c.metadataFixQueue.ShutDown()
 	}()
 	wg := &sync.WaitGroup{}
 	wg.Add(workerNum * 2)
@@ -192,7 +168,7 @@ func (c *slavePodController) Start(ctx context.Context, workerNum int) {
 		}()
 		go func() {
 			defer wg.Done()
-			for processNextWorkItem(ctx, c.podUpdateQueue, c.handlePodUpdateAdapter) {
+			for processNextWorkItem(ctx, c.metadataFixQueue, c.handleMetadataFix) {
 			}
 		}()
 	}
@@ -254,48 +230,75 @@ func processNextWorkItem[T any](ctx context.Context, queue workqueue.RateLimitin
 }
 
 func (c *slavePodController) handlePodAdd(ctx context.Context, req client.ObjectKey) (reconcile.Result, error) {
-	klog.V(3).Infof("add pod %s", req.String())
+	klog.V(3).Infof("handle add pod %s", req.String())
 	return reconcile.Result{}, nil
 }
 
-func (c *slavePodController) handlePodUpdateAdapter(ctx context.Context, req client.ObjectKey) (rs reconcile.Result, err error) {
-	klog.V(3).Infof("update pod %s", req.String())
+func (c *slavePodController) handleMetadataFix(ctx context.Context, req client.ObjectKey) (rs reconcile.Result, err error) {
+	klog.V(3).Infof("metadata fix pod %s", req.String())
+	var pod *v1.Pod
 	rs = reconcile.Result{}
-	pod, err := c.podLister.Pods(req.Namespace).Get(req.Name)
+	pod, err = c.podLister.Pods(req.Namespace).Get(req.Name)
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			klog.V(3).ErrorS(err, "get pod failed", "podKey", req.String())
 		} else {
 			err = nil
 		}
-		return rs, err
+		return
 	}
-	update, ok := c.updateCache.Get(req.String())
+	if !pod.DeletionTimestamp.IsZero() {
+		klog.V(4).Infof("Pod %s has been marked for deletion, Skip metadata fix", req.String())
+		return
+	}
+	metadata, ok := c.metadataCache.Get(req)
 	if !ok {
-		return rs, err
+		return
 	}
 	defer func() {
+		// 处理完毕
 		if err == nil {
-			c.updateCache.Done(req.String(), update)
+			c.metadataCache.Done(req, metadata)
 		}
 	}()
-	err = c.handlePodUpdate(ctx, pod, update)
-	return rs, err
-}
 
-func (c *slavePodController) handlePodUpdate(ctx context.Context, pod *v1.Pod, update UpdateRequest) error {
-	targetPod := pod.DeepCopy()
-	util.CopyMap(update.Labels, targetPod.Labels)
-	util.CopyMap(update.Annotations, targetPod.Annotations)
-	if update.OwnerReferences != nil {
-		targetPod.OwnerReferences = update.OwnerReferences
-	}
-	if !reflect.DeepEqual(pod.ObjectMeta, targetPod.ObjectMeta) {
-		patchData, err := client.StrategicMergeFrom(pod).Data(targetPod)
-		if err != nil {
-			return err
+	newPod := pod.DeepCopy()
+	comparableKeys := func(old, new, result map[string]string, keys []string) {
+		if len(old) == 0 {
+			return
 		}
-		_, err = c.client.CoreV1().Pods(targetPod.Namespace).Patch(ctx, targetPod.Name,
+		for _, key := range keys {
+			val, ok := old[key]
+			if !ok {
+				continue
+			}
+			if new == nil || new[key] != val {
+				result[key] = val
+			}
+		}
+	}
+	// 修复labels
+	labels := make(map[string]string)
+	comparableKeys(metadata.Labels, newPod.Labels, labels, podLabelKeys)
+	util.CopyMap(labels, newPod.Labels)
+
+	// 修复annotations
+	annos := make(map[string]string)
+	comparableKeys(metadata.Annotations, newPod.Annotations, annos, podAnnoKeys)
+	util.CopyMap(annos, newPod.Annotations)
+
+	// 修复OwnerReferences
+	if len(metadata.OwnerReferences) > 0 {
+		newPod.OwnerReferences = metadata.OwnerReferences
+	}
+
+	if !reflect.DeepEqual(pod.ObjectMeta, newPod.ObjectMeta) {
+		var patchData []byte
+		patchData, err = client.StrategicMergeFrom(pod).Data(newPod)
+		if err != nil {
+			return
+		}
+		_, err = c.client.CoreV1().Pods(req.Namespace).Patch(ctx, req.Name,
 			types.StrategicMergePatchType, patchData, metav1.PatchOptions{}, "")
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -303,8 +306,43 @@ func (c *slavePodController) handlePodUpdate(ctx context.Context, pod *v1.Pod, u
 			} else {
 				err = nil
 			}
-			return err
+		} else {
+			klog.V(4).Infof("Successfully fix pod %s metadata", req.String())
 		}
 	}
-	return nil
+	return
+}
+
+//func (c *slavePodController) handleDevicesClear(ctx context.Context, req client.ObjectKey) (reconcile.Result, error) {
+//	klog.V(3).Infof("devices fix pod %s", req.String())
+//	// TODO 这里实现设备修复逻辑
+//	pod, err := c.podLister.Pods(req.Namespace).Get(req.Name)
+//	if err != nil {
+//		if !errors.IsNotFound(err) {
+//			klog.V(3).ErrorS(err, "get pod failed", "podKey", req.String())
+//		} else {
+//			err = nil
+//		}
+//		return reconcile.Result{}, err
+//	}
+//	if !pod.DeletionTimestamp.IsZero() {
+//		klog.V(5).Infof("Pod %s has been marked for deletion, Skip devices fix", req.String())
+//		return reconcile.Result{}, nil
+//	}
+//
+//	return reconcile.Result{}, nil
+//}
+
+func MapByDeviceType(ret []*v1.Pod) map[string][]*v1.Pod {
+	devTypeMap := make(map[string][]*v1.Pod)
+	for i, pod := range ret {
+		devType := pod.Annotations[config.DeviceTypeAnnotationKey]
+		if pods, ok := devTypeMap[devType]; ok {
+			pods = append(pods, ret[i])
+			devTypeMap[devType] = pods
+		} else {
+			devTypeMap[devType] = []*v1.Pod{ret[i]}
+		}
+	}
+	return devTypeMap
 }

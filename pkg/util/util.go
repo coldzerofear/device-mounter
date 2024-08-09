@@ -19,6 +19,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+func IsSidecar(container v1.Container) bool {
+	return container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways
+}
+
 func LoopRetry(retryCount uint, interval time.Duration, conditionFunc wait.ConditionFunc) error {
 	var err error
 	var done bool

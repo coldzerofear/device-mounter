@@ -34,12 +34,15 @@ import (
 func CheckPodContainerStatus(pod *v1.Pod, cont *api.Container) error {
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.Name == cont.Name {
-			if containerStatus.Started != nil && *containerStatus.Started {
+			//if containerStatus.Started != nil && *containerStatus.Started {
+			//	return nil
+			//}
+			if containerStatus.Ready {
 				return nil
 			}
 		}
 	}
-	return fmt.Errorf("The target container %s is not running", cont.Name)
+	return fmt.Errorf("The target container %s is not ready", cont.Name)
 }
 
 func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error) {
@@ -56,12 +59,24 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 		return nil, fmt.Errorf("Pod has multiple containers, target container must be specified")
 	}
 	for i, container := range pod.Spec.Containers {
+		checkSidecarFunc := func() error {
+			if util.IsSidecar(container) {
+				return fmt.Errorf("Target container is a sidecar container")
+			}
+			return nil
+		}
 		if container.Name == cont.Name {
+			if err := checkSidecarFunc(); err != nil {
+				return nil, err
+			}
 			ctr := &api.Container{}
 			ctr.Name = cont.Name
 			ctr.Index = uint32(i)
 			return ctr, nil
 		} else if cont.Name == "" && int(cont.Index) == i {
+			if err := checkSidecarFunc(); err != nil {
+				return nil, err
+			}
 			ctr := &api.Container{}
 			ctr.Name = container.Name
 			ctr.Index = cont.Index
@@ -250,7 +265,11 @@ func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, owner
 	// TODO 确保至少有1个Pod副本在任何中断期间都是可用的 (防止资源泄漏)
 	minAvailable := intstr.FromInt32(int32(1))
 	pdb.Spec.MinAvailable = &minAvailable
-	pdb.Spec.Selector = &metav1.LabelSelector{MatchLabels: ownerPod.Labels}
+	pdb.Spec.Selector = &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			config.CreatedByLabelKey: ownerPod.Labels[config.CreatedByLabelKey],
+		},
+	}
 	return s.KubeClient.PolicyV1().PodDisruptionBudgets(ownerPod.Namespace).Create(ctx, &pdb, metav1.CreateOptions{})
 }
 
@@ -294,12 +313,22 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 	mutaPod.DeletionTimestamp = nil
 	mutaPod.Namespace = ownerPod.Namespace
 	//mutaPod.Finalizers = []string{v1alpha1.Group + "/pod-protection"}
+	getContainerId := func() string {
+		for _, status := range ownerPod.Status.ContainerStatuses {
+			if status.Name == container.Name {
+				return status.ContainerID
+			}
+		}
+		return ""
+	}
 	mutaPod.Annotations[config.DeviceTypeAnnotationKey] = devType
+	mutaPod.Annotations[config.ContainerIdAnnotationKey] = getContainerId()
 
-	mutaPod.Spec.NodeSelector["kubernetes.io/hostname"] = s.NodeName
+	mutaPod.Spec.NodeSelector[v1.LabelHostname] = s.NodeName
+
+	mutaPod.Labels[config.CreatedByLabelKey] = uuid.New().String()
 	mutaPod.Labels[config.OwnerNameLabelKey] = ownerPod.Name
 	mutaPod.Labels[config.OwnerUidLabelKey] = string(ownerPod.UID)
-	mutaPod.Labels[config.CreatedByLabelKey] = uuid.New().String()
 	mutaPod.Labels[config.MountContainerLabelKey] = container.Name
 	mutaPod.Labels[config.AppComponentLabelKey] = config.CreateManagerBy
 	mutaPod.Labels[config.AppManagedByLabelKey] = config.CreateManagerBy

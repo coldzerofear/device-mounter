@@ -18,6 +18,7 @@ import (
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	client2 "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type DeviceMounterImpl struct {
@@ -64,7 +65,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 
 	// 校验设备类型
 	deviceType := strings.ToUpper(req.GetDeviceType())
-	deviceMounter, ok := framework.RegisterDeviceMounter[deviceType]
+	deviceMounter, ok := framework.GetDeviceMounter(deviceType)
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,
@@ -118,18 +119,18 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			Message: err.Error(),
 		}, nil
 	}
-	// 变异
+	// 变异配置
 	for i, slavePod := range slavePods {
-		deepCopy := slavePod.DeepCopy()
-		s.MutationPodFunc(deviceType, container, pod, deepCopy)
-		deepCopy, err = s.PatchPod(deepCopy, req.GetPatches())
+		targetPod := slavePod.DeepCopy()
+		targetPod, err = s.PatchPod(targetPod, req.GetPatches())
 		if err != nil {
 			return &api.DeviceResponse{
 				Result:  api.ResultCode_Fail,
 				Message: err.Error(),
 			}, nil
 		}
-		slavePods[i] = deepCopy
+		s.MutationPodFunc(deviceType, container, pod, targetPod)
+		slavePods[i] = targetPod
 	}
 	// 创建slave pods
 	var slavePodKeys []types.NamespacedName
@@ -140,11 +141,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 			klog.Errorf("Create Slave Pod failed: %v", err)
 			break
 		}
-		slavePodKeys = append(slavePodKeys, types.NamespacedName{
-			Name:      slavePod.Name,
-			Namespace: slavePod.Namespace,
-		})
-		_, _ = s.CreatePodDisruptionBudget(ctx, slavePod)
+		slavePodKey := client2.ObjectKeyFromObject(slavePod)
+		slavePodKeys = append(slavePodKeys, slavePodKey)
+		_, pdbErr := s.CreatePodDisruptionBudget(ctx, slavePod)
+		if pdbErr != nil {
+			klog.V(4).ErrorS(pdbErr, fmt.Sprintf("Create Slave Pod %s PDB failed", slavePodKey.String()))
+		}
 	}
 	if err != nil || len(slavePodKeys) == 0 {
 		// 创建失败 回收已创建的pod
@@ -256,10 +258,7 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 成功前回收掉跳过的pod
 	skipPodKeys := make([]types.NamespacedName, len(skipPods))
 	for i, skipPod := range skipPods {
-		skipPodKeys[i] = types.NamespacedName{
-			Name:      skipPod.Name,
-			Namespace: skipPod.Namespace,
-		}
+		skipPodKeys[i] = client2.ObjectKeyFromObject(skipPod)
 	}
 	_ = GarbageCollectionPods(ctx, s.KubeClient, skipPodKeys)
 	// 挂载成功发送event
@@ -305,7 +304,7 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 	}
 	// 校验设备类型
 	deviceType := strings.ToUpper(req.GetDeviceType())
-	deviceMounter, ok := framework.RegisterDeviceMounter[deviceType]
+	deviceMounter, ok := framework.GetDeviceMounter(deviceType)
 	if !ok {
 		return &api.DeviceResponse{
 			Result:  api.ResultCode_Fail,

@@ -40,7 +40,7 @@ func NewNodeLabeler(nodeName string, nodeLister listerv1.NodeLister, kubeClient 
 }
 
 func ContainsDeviceTypes(labelKey string) bool {
-	for devType, _ := range framework.RegisterDeviceMounter {
+	for _, devType := range framework.GetDeviceMounterTypes() {
 		if labelKey == strings.ToLower(SchedulingLabelPrefix+"/"+devType) {
 			return true
 		}
@@ -138,7 +138,7 @@ func (l *nodeLabeler) updateLabels() error {
 		}
 	}
 
-	for devType, _ := range framework.RegisterDeviceMounter {
+	for _, devType := range framework.GetDeviceMounterTypes() {
 		labelKey := strings.ToLower(SchedulingLabelPrefix + "/" + devType)
 		if !slices.Contains(labelKeys, labelKey) {
 			addKeys = append(addKeys, labelKey)

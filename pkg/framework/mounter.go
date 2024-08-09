@@ -38,21 +38,47 @@ type DeviceMounter interface {
 	CleanupPodResources(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) []types.NamespacedName
 }
 
+type CreateMounterFunc func() (DeviceMounter, error)
+
 var (
-	RegisterDeviceMounter = make(map[string]DeviceMounter)
-	AddDeviceMounterFuncs []func() (DeviceMounter, error)
+	registerDeviceMounter map[string]DeviceMounter
+	addDeviceMounterFuncs []CreateMounterFunc
 )
+
+func init() {
+	registerDeviceMounter = make(map[string]DeviceMounter)
+	addDeviceMounterFuncs = make([]CreateMounterFunc, 0)
+}
+
+func AddDeviceMounterFuncs(createFunc CreateMounterFunc) {
+	if createFunc != nil {
+		addDeviceMounterFuncs = append(addDeviceMounterFuncs, createFunc)
+	}
+}
 
 // TODO 在这里注册设备挂载器
 func RegisrtyDeviceMounter() error {
-	for _, createFunc := range AddDeviceMounterFuncs {
+	for _, createFunc := range addDeviceMounterFuncs {
 		mounter, err := createFunc()
 		if err != nil {
 			klog.Errorf(err.Error())
 			continue
 		}
 		devType := strings.ToUpper(mounter.DeviceType())
-		RegisterDeviceMounter[devType] = mounter
+		registerDeviceMounter[devType] = mounter
 	}
 	return nil
+}
+
+func GetDeviceMounterTypes() []string {
+	var deviceTypes []string
+	for _, mounter := range registerDeviceMounter {
+		deviceTypes = append(deviceTypes, mounter.DeviceType())
+	}
+	return deviceTypes
+}
+
+func GetDeviceMounter(devType string) (DeviceMounter, bool) {
+	mounter, ok := registerDeviceMounter[devType]
+	return mounter, ok
 }
