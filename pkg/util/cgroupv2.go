@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -179,11 +180,11 @@ func loadAttachCgroupDeviceFilter(dirFd int, rules []*devices.Rule) (func() erro
 		return NilCloser, err
 	}
 
-	insts, err := info.Instructions()
+	currentInstructions, err := info.Instructions()
 	if err != nil {
 		return NilCloser, err
 	}
-	instructions, err := ebpf2.LoadInstructions(insts)
+	tmpInstructions, err := ebpf2.LoadInstructions(currentInstructions)
 	if err != nil {
 		return NilCloser, err
 	}
@@ -191,11 +192,18 @@ func loadAttachCgroupDeviceFilter(dirFd int, rules []*devices.Rule) (func() erro
 		if rule == nil {
 			continue
 		}
-		if err := instructions.AppendRule(rules[i]); err != nil {
+		if err := tmpInstructions.AppendRule(rules[i]); err != nil {
 			return NilCloser, err
 		}
 	}
-	instructions.Finalize()
+	tmpInstructions.Finalize()
+	newInstructions := asm.Instructions(tmpInstructions)
+
+	if !reflect.DeepEqual(newInstructions, currentInstructions) {
+		klog.V(5).InfoS("The newly generated instruction is equal to the current "+
+			"instruction, skip replacement", "current", currentInstructions, "new", newInstructions)
+		return NilCloser, nil
+	}
 
 	supportReplaceProg := haveBpfProgReplace()
 
@@ -212,7 +220,7 @@ func loadAttachCgroupDeviceFilter(dirFd int, rules []*devices.Rule) (func() erro
 
 	spec := &ebpf.ProgramSpec{
 		Type:         ebpf.CGroupDevice,
-		Instructions: asm.Instructions(instructions),
+		Instructions: newInstructions,
 		License:      "Apache", // TODO 根据runc devicefilter.DeviceFilter() 返回
 	}
 	prog, err := ebpf.NewProgram(spec)
