@@ -147,6 +147,13 @@ func (c *slavePodController) OnDelete(obj interface{}) {
 	}
 }
 
+//func (c *slavePodController) Start(ctx context.Context, workerNum int) {
+//	for i := 0; i < workerNum; i++ {
+//		go wait.Until(func() {for processNextWorkItem(ctx, c.podAddQueue, c.handlePodAdd) {}}, time.Second, ctx.Done())
+//		go wait.Until(func() {for processNextWorkItem(ctx, c.podAddQueue, c.handleMetadataFix) {}}, time.Second, ctx.Done())
+//	}
+//}
+
 func (c *slavePodController) Start(ctx context.Context, workerNum int) {
 	go func() {
 		<-ctx.Done()
@@ -157,10 +164,6 @@ func (c *slavePodController) Start(ctx context.Context, workerNum int) {
 	wg := &sync.WaitGroup{}
 	wg.Add(workerNum * 2)
 	for i := 0; i < workerNum; i++ {
-		//go wait.Until(func() {
-		//	for processNextWorkItem(ctx, c.podAddQueue, c.handlePodAdd) {
-		//	}
-		//}, time.Second, ctx.Done())
 		go func() {
 			defer wg.Done()
 			for processNextWorkItem(ctx, c.podAddQueue, c.handlePodAdd) {
@@ -176,7 +179,7 @@ func (c *slavePodController) Start(ctx context.Context, workerNum int) {
 	klog.Infoln(c.name, "stopped")
 }
 
-func processNextWorkItem[T any](ctx context.Context, queue workqueue.RateLimitingInterface, workerFunc func(context.Context, T) (reconcile.Result, error)) (loop bool) {
+func processNextWorkItem[request comparable](ctx context.Context, queue workqueue.RateLimitingInterface, workerFunc func(context.Context, request) (reconcile.Result, error)) (loop bool) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			klog.Errorln("processNextWorkItem panic", rec)
@@ -190,7 +193,7 @@ func processNextWorkItem[T any](ctx context.Context, queue workqueue.RateLimitin
 	defer queue.Done(obj)
 
 	// Make sure that the object is a valid request.
-	req, ok := obj.(T)
+	req, ok := obj.(request)
 	if !ok {
 		// As the item in the workqueue is actually invalid, we call
 		// Forget here else we'd go into a loop of attempting to
@@ -294,12 +297,14 @@ func (c *slavePodController) handleMetadataFix(ctx context.Context, req client.O
 
 	if !reflect.DeepEqual(pod.ObjectMeta, newPod.ObjectMeta) {
 		var patchData []byte
-		patchData, err = client.StrategicMergeFrom(pod).Data(newPod)
+		patch := client.StrategicMergeFrom(pod)
+		patchData, err = patch.Data(newPod)
 		if err != nil {
+			klog.V(3).ErrorS(err, "StrategicMerge patch data error")
 			return
 		}
 		_, err = c.client.CoreV1().Pods(req.Namespace).Patch(ctx, req.Name,
-			types.StrategicMergePatchType, patchData, metav1.PatchOptions{}, "")
+			patch.Type(), patchData, metav1.PatchOptions{}, "")
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				klog.V(3).ErrorS(err, "patch pod failed", "name", pod.Name, "namespace", pod.Namespace)
@@ -311,38 +316,4 @@ func (c *slavePodController) handleMetadataFix(ctx context.Context, req client.O
 		}
 	}
 	return
-}
-
-//func (c *slavePodController) handleDevicesClear(ctx context.Context, req client.ObjectKey) (reconcile.Result, error) {
-//	klog.V(3).Infof("devices fix pod %s", req.String())
-//	// TODO 这里实现设备修复逻辑
-//	pod, err := c.podLister.Pods(req.Namespace).Get(req.Name)
-//	if err != nil {
-//		if !errors.IsNotFound(err) {
-//			klog.V(3).ErrorS(err, "get pod failed", "podKey", req.String())
-//		} else {
-//			err = nil
-//		}
-//		return reconcile.Result{}, err
-//	}
-//	if !pod.DeletionTimestamp.IsZero() {
-//		klog.V(5).Infof("Pod %s has been marked for deletion, Skip devices fix", req.String())
-//		return reconcile.Result{}, nil
-//	}
-//
-//	return reconcile.Result{}, nil
-//}
-
-func MapByDeviceType(ret []*v1.Pod) map[string][]*v1.Pod {
-	devTypeMap := make(map[string][]*v1.Pod)
-	for i, pod := range ret {
-		devType := pod.Annotations[config.DeviceTypeAnnotationKey]
-		if pods, ok := devTypeMap[devType]; ok {
-			pods = append(pods, ret[i])
-			devTypeMap[devType] = pods
-		} else {
-			devTypeMap[devType] = []*v1.Pod{ret[i]}
-		}
-	}
-	return devTypeMap
 }
