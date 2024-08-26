@@ -5,10 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"net/http/pprof"
 
 	"github.com/emicklei/go-restful/v3"
 	"k8s-device-mounter/pkg/api/v1alpha1"
@@ -21,6 +18,9 @@ import (
 	"k8s-device-mounter/pkg/versions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	// to ensure that exec-entrypoint and run can make use of them.
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 )
 
@@ -34,6 +34,7 @@ const (
 )
 
 var (
+	debug            bool
 	version          bool
 	KubeConfig       = ""
 	TCPBindPort      = ":8768"
@@ -44,6 +45,7 @@ var (
 
 func initFlags() {
 	klog.InitFlags(nil)
+	flag.BoolVar(&debug, "debug", false, "Enable pprof endpoint (default false)")
 	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
 	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
 	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default \":8768\")")
@@ -51,6 +53,7 @@ func initFlags() {
 	flag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service (default \":1200\")")
 	flag.StringVar(&MounterNamespace, "mounter-pod-namespace", MounterNamespace, "The namespace of the device mounter pod (default \"kube-system\")")
 	flag.StringVar(&MounterSelector, "mounter-label-selector", MounterSelector, "Specify the label selector for the device mounter pod")
+
 }
 
 func main() {
@@ -104,14 +107,30 @@ func main() {
 	if err != nil {
 		klog.Exitln(err)
 	}
-	restful.Add(apiServiceV1alpha1(handlers))
+	webServer := apiServiceV1alpha1(handlers)
+	if debug {
+		klog.V(3).Infoln("enable pprof debugging information")
+		routeFunction := func(handler func(http.ResponseWriter, *http.Request)) restful.RouteFunction {
+			return func(request *restful.Request, response *restful.Response) {
+				handler(response.ResponseWriter, request.Request)
+			}
+		}
+		webServer.Route(webServer.GET("/pprof/profile").To(routeFunction(pprof.Profile)))
+		webServer.Route(webServer.GET("/pprof/heap").To(routeFunction(pprof.Handler("heap").ServeHTTP)))
+		webServer.Route(webServer.GET("/pprof/goroutine").To(routeFunction(pprof.Handler("goroutine").ServeHTTP)))
+	}
+	restful.Add(webServer)
 	restful.Filter(restful.OPTIONSFilter())
 
 	server := &http.Server{
 		Addr: "0.0.0.0" + TCPBindPort,
 		TLSConfig: &tls.Config{
 			GetConfigForClient: func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
-				return tlsConfigWatch.GetConfig()
+				config, err := tlsConfigWatch.GetConfig()
+				if err == nil && debug {
+					config.ClientAuth = tls.RequestClientCert
+				}
+				return config, err
 			},
 			GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 				// This function is not called, but it needs to be non-nil, otherwise

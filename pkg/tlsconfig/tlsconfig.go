@@ -117,10 +117,6 @@ func (w *watch) reloadTlsProfile() {
 	{
 		// TODO: only compute human readable strings on debug level.
 		// For now, there is no easy way to test for logging level.
-		//cipherNames := crypto.CipherSuitesToNamesOrDie(ciphers)
-		//minVersionName := crypto.TLSVersionToNameOrDie(minVersion)
-		//klog.V(1).Infof("Set min TLS version: %s", minVersionName)
-		//klog.V(1).Infof("Set ciphers: %s", strings.Join(cipherNames, ", "))
 		if minVersion == 0 {
 			klog.V(1).Infof("Min TLS version was not set in the config file. Using default.")
 		} else {

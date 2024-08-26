@@ -29,7 +29,7 @@ metadata:
   name: device-mounter-apiserver
   namespace: kube-system
 data:
-  tls-profile-v1alpha1: "{}"
+  tls-profile-v1alpha1.yaml: "{}"
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -190,7 +190,7 @@ metadata:
   annotations:
     cert-manager.io/inject-ca-from: kube-system/device-mounter-apiserver-cert
 spec:
-  insecureSkipTLSVerify: true
+  insecureSkipTLSVerify: false
   group: device-mounter.io
   version: v1alpha1
   groupPriorityMinimum: 2000
