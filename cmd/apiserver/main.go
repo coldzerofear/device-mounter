@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	// to ensure that exec-entrypoint and run can make use of them.
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+
 	"github.com/emicklei/go-restful/v3"
 	"k8s-device-mounter/pkg/api/v1alpha1"
 	"k8s-device-mounter/pkg/authConfig"
