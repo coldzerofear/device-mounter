@@ -12,6 +12,7 @@ import (
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -59,11 +60,12 @@ var (
 )
 
 func (c *slavePodController) OnAdd(obj interface{}, isInInitialList bool) {
-	pod, ok := obj.(*v1.Pod)
-	if !ok {
+	podObj, err := meta.Accessor(obj)
+	if err != nil {
 		return
 	}
-	if len(pod.Labels) == 0 || len(pod.Annotations) == 0 {
+
+	if len(podObj.GetLabels()) == 0 || len(podObj.GetAnnotations()) == 0 {
 		return
 	}
 	containsKeys := func(keys []string, maps map[string]string) bool {
@@ -74,53 +76,53 @@ func (c *slavePodController) OnAdd(obj interface{}, isInInitialList bool) {
 		}
 		return true
 	}
-	if !containsKeys(podAnnoKeys, pod.Annotations) {
+	if !containsKeys(podAnnoKeys, podObj.GetAnnotations()) {
 		return
 	}
-	if !containsKeys(podLabelKeys, pod.Labels) {
+	if !containsKeys(podLabelKeys, podObj.GetLabels()) {
 		return
 	}
-	if pod.Labels[config.AppComponentLabelKey] != config.CreateManagerBy {
+	if podObj.GetLabels()[config.AppComponentLabelKey] != config.CreateManagerBy {
 		return
 	}
-	if pod.Labels[config.AppManagedByLabelKey] != config.CreateManagerBy {
+	if podObj.GetLabels()[config.AppManagedByLabelKey] != config.CreateManagerBy {
 		return
 	}
-	c.podAddQueue.Add(client.ObjectKeyFromObject(pod))
+	c.podAddQueue.Add(client.ObjectKey{Namespace: podObj.GetNamespace(), Name: podObj.GetName()})
 }
 
 func (c *slavePodController) OnUpdate(oldObj, newObj interface{}) {
-	oldPod, ok := oldObj.(*v1.Pod)
-	if !ok {
+	oldPod, err := meta.Accessor(oldObj)
+	if err != nil {
 		return
 	}
-	if len(oldPod.Labels) == 0 || len(oldPod.Annotations) == 0 {
+	if len(oldPod.GetLabels()) == 0 || len(oldPod.GetAnnotations()) == 0 {
 		return
 	}
-	newPod, ok := newObj.(*v1.Pod)
-	if !ok {
+	newPod, err := meta.Accessor(newObj)
+	if err != nil {
 		return
 	}
 	c.metadataFixEnqueue(oldPod, newPod)
 }
 
-func (c *slavePodController) metadataFixEnqueue(oldPod, newPod *v1.Pod) {
+func (c *slavePodController) metadataFixEnqueue(oldPod, newPod metav1.Object) {
 	// resync skip
-	if oldPod.ResourceVersion == newPod.ResourceVersion {
+	if oldPod.GetResourceVersion() == newPod.GetResourceVersion() {
 		return
 	}
 	metadata := Metadata{}
-	if !reflect.DeepEqual(oldPod.Labels, newPod.Labels) {
-		metadata.Labels = oldPod.Labels
+	if !reflect.DeepEqual(oldPod.GetLabels(), newPod.GetLabels()) {
+		metadata.Labels = oldPod.GetLabels()
 	}
-	if !reflect.DeepEqual(oldPod.Annotations, newPod.Annotations) {
-		metadata.Annotations = oldPod.Annotations
+	if !reflect.DeepEqual(oldPod.GetAnnotations(), newPod.GetAnnotations()) {
+		metadata.Annotations = oldPod.GetAnnotations()
 	}
-	if !reflect.DeepEqual(oldPod.OwnerReferences, newPod.OwnerReferences) {
-		metadata.OwnerReferences = oldPod.OwnerReferences
+	if !reflect.DeepEqual(oldPod.GetOwnerReferences(), newPod.GetOwnerReferences()) {
+		metadata.OwnerReferences = oldPod.GetOwnerReferences()
 	}
 	if !reflect.DeepEqual(metadata, Metadata{}) {
-		key := client.ObjectKeyFromObject(oldPod)
+		key := client.ObjectKey{Namespace: oldPod.GetNamespace(), Name: oldPod.GetName()}
 		c.metadataCache.Set(key, metadata)
 		c.metadataFixQueue.Add(key)
 	}
