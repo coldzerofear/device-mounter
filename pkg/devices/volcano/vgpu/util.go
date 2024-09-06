@@ -74,21 +74,24 @@ type deviceMemory struct {
 	bufferSize  uint64
 	offset      uint64
 	total       uint64
+	unused      [3]uint64
 }
 
 type deviceUtilization struct {
 	decUtil uint64
 	encUtil uint64
 	smUtil  uint64
+	unused  [3]uint64
 }
 
 type shrregProcSlotT struct {
-	pid         int32                 // 容器内进程id
-	hostpid     int32                 // 宿主机进程id
-	used        [16]deviceMemory      // 设备已使用内存
-	monitorused [16]uint64            //
-	deviceUtil  [16]deviceUtilization // 设备利用率
+	pid         int32
+	hostpid     int32
+	used        [16]deviceMemory
+	monitorused [16]uint64
+	deviceUtil  [16]deviceUtilization
 	status      int32
+	unused      [3]uint64
 }
 
 type uuid struct {
@@ -101,20 +104,24 @@ type semT struct {
 
 type sharedRegionT struct {
 	initializedFlag int32
+	majorVersion    int32
+	minorVersion    int32
 	smInitFlag      int32
 	ownerPid        uint32
 	sem             semT
-	num             uint64   // gpu设备数量
-	uuids           [16]uuid // gpu设备uuid
+	num             uint64
+	uuids           [16]uuid
 
-	limit    [16]uint64            // gpu设备内存限制
-	sm_limit [16]uint64            // gpu设备算力限制
-	procs    [1024]shrregProcSlotT // 进程映射
+	limit   [16]uint64
+	smLimit [16]uint64
+	procs   [1024]shrregProcSlotT
 
-	procnum           int32 // 容器内gpu任务进程数
-	utilizationSwitch int32 // 开关
+	procnum           int32
+	utilizationSwitch int32
 	recentKernel      int32
 	priority          int32
+	lastKernelTime    int64
+	unused            [4]uint64
 }
 
 func mmapVGPUCacheConfig(cacheDir string) (*sharedRegionT, []byte, error) {

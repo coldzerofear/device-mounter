@@ -276,7 +276,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 						memory := uint64(dev.Usedmem) << 20 // mb转bytes
 						klog.Infoln("Expansion device", devuuid, "add memory", memory, "add core", cores)
 						cache.limit[i] += memory
-						cache.sm_limit[i] += cores
+						cache.smLimit[i] += cores
 					}
 				}
 				return nil
@@ -303,7 +303,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 							//klog.Infoln("Expansion device", devuuid, "add memory", memory, "add core", cores)
 							klog.Infoln("Attach new device", devuuid, "memory limit", memory, "core limit", cores)
 							cache.limit[i] = memory
-							cache.sm_limit[i] = cores
+							cache.smLimit[i] = cores
 							delete(devMap, devuuid)
 						}
 					}
@@ -314,7 +314,7 @@ func (m *VolcanoVGPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clients
 						klog.Infoln("Attach new device", devuuid, "memory limit", memory, "core limit", cores)
 						cache.uuids[tail] = ConvertUUID(devuuid)
 						cache.limit[tail] = memory
-						cache.sm_limit[tail] = cores
+						cache.smLimit[tail] = cores
 						cache.num++
 					}
 					return nil
@@ -457,7 +457,7 @@ func (m *VolcanoVGPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clien
 				devuuid := string(cache.uuids[i].uuid[:])[0:40]
 				if _, ok := devMap[devuuid]; ok {
 					cache.limit[i] = 0
-					cache.sm_limit[i] = 0
+					cache.smLimit[i] = 0
 					cache.uuids[i] = uuid{uuid: [96]byte{}}
 					cache.num--
 				}
