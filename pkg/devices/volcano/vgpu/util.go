@@ -15,7 +15,6 @@ import (
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/api/v1alpha1"
 	"k8s-device-mounter/pkg/client"
-	"k8s-device-mounter/pkg/util/lock"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"
@@ -302,7 +301,17 @@ func GetPodDevMap(pod *v1.Pod) map[string]Device {
 	return devMap
 }
 
-var vgpuCacheLock = keymutex.NewHashed(runtime.NumCPU() * 2)
+var (
+	cacheLock keymutex.KeyMutex
+)
+
+func init() {
+	n := runtime.NumCPU() * 2
+	if n < 4 {
+		n = 4
+	}
+	cacheLock = keymutex.NewHashed(n)
+}
 
 func MutationCacheFunc(cacheDir string, mutationFunc func(*sharedRegionT) error) error {
 	// 修改配置文件限制值
@@ -310,11 +319,9 @@ func MutationCacheFunc(cacheDir string, mutationFunc func(*sharedRegionT) error)
 	if err != nil {
 		return err
 	}
-	//vgpuCacheLock.LockKey(cacheDir)
-	lock.Lock(cacheDir)
+	cacheLock.LockKey(cacheDir)
 	defer func() {
-		//vgpuCacheLock.UnlockKey(cacheDir)
-		lock.Unlock(cacheDir)
+		_ = cacheLock.UnlockKey(cacheDir)
 		if data != nil {
 			err = syscall.Munmap(data)
 		}

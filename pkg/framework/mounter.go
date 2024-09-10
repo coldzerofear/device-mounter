@@ -2,6 +2,7 @@ package framework
 
 import (
 	"strings"
+	"sync"
 
 	"k8s-device-mounter/pkg/api"
 	"k8s-device-mounter/pkg/util"
@@ -41,6 +42,7 @@ type DeviceMounter interface {
 type CreateMounterFunc func() (DeviceMounter, error)
 
 var (
+	lock                  sync.Mutex
 	registerDeviceMounter map[string]DeviceMounter
 	addDeviceMounterFuncs []CreateMounterFunc
 )
@@ -51,13 +53,17 @@ func init() {
 }
 
 func AddDeviceMounterFuncs(createFunc CreateMounterFunc) {
+	lock.Lock()
 	if createFunc != nil {
 		addDeviceMounterFuncs = append(addDeviceMounterFuncs, createFunc)
 	}
+	lock.Unlock()
 }
 
 // TODO 在这里注册设备挂载器
 func RegisrtyDeviceMounter() error {
+	lock.Lock()
+	defer lock.Unlock()
 	for _, createFunc := range addDeviceMounterFuncs {
 		mounter, err := createFunc()
 		if err != nil {
@@ -71,6 +77,8 @@ func RegisrtyDeviceMounter() error {
 }
 
 func GetDeviceMounterTypes() []string {
+	lock.Lock()
+	defer lock.Unlock()
 	var deviceTypes []string
 	for _, mounter := range registerDeviceMounter {
 		deviceTypes = append(deviceTypes, mounter.DeviceType())
@@ -79,6 +87,8 @@ func GetDeviceMounterTypes() []string {
 }
 
 func GetDeviceMounter(devType string) (DeviceMounter, bool) {
+	lock.Lock()
 	mounter, ok := registerDeviceMounter[devType]
+	lock.Unlock()
 	return mounter, ok
 }
