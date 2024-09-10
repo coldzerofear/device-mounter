@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"gomodules.xyz/jsonpatch/v2"
@@ -15,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 )
 
@@ -25,7 +25,6 @@ const (
 type nodeLabeler struct {
 	nodeName   string
 	kubeClient *kubernetes.Clientset
-	done       atomic.Bool
 	stopped    chan struct{}
 	listerv1.NodeLister
 }
@@ -48,26 +47,28 @@ func ContainsDeviceTypes(labelKey string) bool {
 	return false
 }
 
-func (l *nodeLabeler) Done() {
-	if l.done.Load() {
-		return
-	}
+func (l *nodeLabeler) WaitForStop() {
 	<-l.stopped
-	close(l.stopped)
-	l.done.Swap(true)
 }
 
 func (l *nodeLabeler) Start(stopCh <-chan struct{}) {
-	if l.done.Load() {
-		klog.Errorf("The NodeLabeler has been Done and cannot be restarted")
-		return
+	select {
+	case _, ok := <-l.stopped:
+		if !ok {
+			klog.Errorf("The NodeLabeler has been Done and cannot be Start")
+			return
+		}
+	default:
 	}
 	for {
 		select {
 		case <-stopCh:
-			_ = l.cleanupLabels()
-			klog.Infoln("NodeLabeler has stopped")
+			err := retry.RetryOnConflict(retry.DefaultRetry, l.cleanupLabels)
+			if err != nil {
+				klog.Errorf("NodeLabeler cleanup node labels failed: %v", err)
+			}
 			l.stopped <- struct{}{}
+			klog.Infoln("NodeLabeler has stopped")
 			return
 		default:
 			if l.updateLabels() != nil {

@@ -137,8 +137,7 @@ func main() {
 	kubeConfig = client.GetKubeConfig(KubeConfig)
 	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	nodeLabeler := watchdog.NewNodeLabeler(nodeName, nodeLister, nodeClient)
-	watchdogStop := make(chan struct{}, 1)
-	go nodeLabeler.Start(watchdogStop)
+	go nodeLabeler.Start(ctx.Done())
 
 	klog.Infoln("Service Starting...")
 
@@ -178,8 +177,7 @@ func main() {
 		s2.GracefulStop()
 	}
 	cancelFunc() // 关闭controller
-	close(watchdogStop)
-	nodeLabeler.Done()
+	nodeLabeler.WaitForStop()
 	klog.Infoln("Service stopped, please restart the service")
 	os.Exit(exitCode)
 }
