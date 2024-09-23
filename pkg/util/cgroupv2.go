@@ -199,11 +199,12 @@ func loadAttachCgroupDeviceFilter(dirFd int, rules []*devices.Rule) (func() erro
 	tmpInstructions.Finalize()
 	newInstructions := asm.Instructions(tmpInstructions)
 
-	if !reflect.DeepEqual(newInstructions, currentInstructions) {
-		klog.V(5).InfoS("The newly generated instruction is equal to the current "+
-			"instruction, skip replacement", "current", currentInstructions, "new", newInstructions)
+	if reflect.DeepEqual(newInstructions, currentInstructions) {
+		klog.V(4).InfoS("The newly generated instruction is equal to the current " +
+			"instruction, skip replacement")
 		return NilCloser, nil
 	}
+	klog.V(5).Infoln("newInstructions", newInstructions)
 
 	supportReplaceProg := haveBpfProgReplace()
 
