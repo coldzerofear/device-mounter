@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emicklei/go-restful/v3"
 	"google.golang.org/grpc"
@@ -66,7 +67,6 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		_ = response.WriteError(http.StatusBadRequest, err)
 		return
 	}
-
 	pod, err := s.kubeClient.CoreV1().Pods(params.namespace).
 		Get(context.TODO(), params.name, metav1.GetOptions{
 			ResourceVersion: "0",
@@ -74,9 +74,9 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_ = response.WriteError(http.StatusNotFound, fmt.Errorf("target pod does not exist: %w", err))
-			return
+		} else {
+			_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		}
-		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		return
 	}
 	mPod, err := s.GetMounterPodOnNodeName(pod.Spec.NodeName)
@@ -84,7 +84,7 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure())
+	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure(), grpc.WithTimeout(5*time.Second))
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("failed to connect to device mounter: %v", err))
 		return
@@ -99,17 +99,19 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 	}
 	client := api.NewDeviceMountServiceClient(conn)
 	req := api.MountDeviceRequest{
-		PodName:        params.name,
-		PodNamespace:   params.namespace,
-		Resources:      params.Resources,
-		Annotations:    params.Annotations,
-		Labels:         params.Labels,
-		Container:      cont,
-		DeviceType:     params.deviceType,
-		TimeoutSeconds: params.timeoutSeconds,
-		Patches:        params.Patches,
+		PodName:      params.name,
+		PodNamespace: params.namespace,
+		Resources:    params.Resources,
+		Annotations:  params.Annotations,
+		Labels:       params.Labels,
+		Container:    cont,
+		DeviceType:   params.deviceType,
+		Patches:      params.Patches,
 	}
-	resp, err := client.MountDevice(request.Request.Context(), &req)
+	timeout := time.Duration(params.timeoutSeconds) * time.Second
+	ctx, cancelFunc := context.WithTimeout(request.Request.Context(), timeout)
+	defer cancelFunc()
+	resp, err := client.MountDevice(ctx, &req)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
@@ -122,27 +124,35 @@ func (s *service) MountDevice(request *restful.Request, response *restful.Respon
 	}
 }
 
-func readMountRequestParameters(request *restful.Request) (*requestMountParams, error) {
-	namespace := request.PathParameter("namespace")
-	name := request.PathParameter("name")
-	if namespace == "" || name == "" {
-		return nil, fmt.Errorf("namespace and name parameters are required")
-	}
-	container := request.QueryParameter("container")
-	devType := request.QueryParameter("device_type")
-	if len(devType) == 0 {
-		return nil, fmt.Errorf("device_type parameters are required")
-	}
+func getWaitTimeoutSecond(request *restful.Request) (int64, error) {
 	timeout := int64(10)
 	if timeoutParam := request.QueryParameter("wait_second"); timeoutParam != "" {
 		var err error
 		timeout, err = strconv.ParseInt(timeoutParam, 10, 32)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse timeout: %w", err)
+			return 0, fmt.Errorf("failed to parse timeout: %w", err)
 		}
 		if timeout < 0 {
-			return nil, fmt.Errorf("the timeout value can only be a positive integer")
+			return 0, fmt.Errorf("the timeout value can only be a positive integer")
 		}
+	}
+	return timeout, nil
+}
+
+func readMountRequestParameters(request *restful.Request) (*requestMountParams, error) {
+	namespace := strings.TrimSpace(request.PathParameter("namespace"))
+	name := strings.TrimSpace(request.PathParameter("name"))
+	if namespace == "" || name == "" {
+		return nil, fmt.Errorf("namespace and name parameters are required")
+	}
+	container := strings.TrimSpace(request.QueryParameter("container"))
+	devType := strings.TrimSpace(request.QueryParameter("device_type"))
+	if devType == "" {
+		return nil, fmt.Errorf("device_type parameters are required")
+	}
+	timeout, err := getWaitTimeoutSecond(request)
+	if err != nil {
+		return nil, err
 	}
 	body, err := io.ReadAll(request.Request.Body)
 	if err != nil {
@@ -165,15 +175,19 @@ func readMountRequestParameters(request *restful.Request) (*requestMountParams, 
 }
 
 func readUnMountRequestParameters(request *restful.Request) (*requestUnMountParams, error) {
-	namespace := request.PathParameter("namespace")
-	name := request.PathParameter("name")
+	namespace := strings.TrimSpace(request.PathParameter("namespace"))
+	name := strings.TrimSpace(request.PathParameter("name"))
 	if namespace == "" || name == "" {
 		return nil, fmt.Errorf("namespace and name parameters are required")
 	}
-	container := request.QueryParameter("container")
-	devType := request.QueryParameter("device_type")
-	if len(devType) == 0 {
+	container := strings.TrimSpace(request.QueryParameter("container"))
+	devType := strings.TrimSpace(request.QueryParameter("device_type"))
+	if devType == "" {
 		return nil, fmt.Errorf("device_type parameters are required")
+	}
+	timeout, err := getWaitTimeoutSecond(request)
+	if err != nil {
+		return nil, err
 	}
 	forceStr := request.QueryParameter("force")
 	force := false
@@ -181,11 +195,12 @@ func readUnMountRequestParameters(request *restful.Request) (*requestUnMountPara
 		force = true
 	}
 	return &requestUnMountParams{
-		name:       name,
-		namespace:  namespace,
-		container:  container,
-		deviceType: devType,
-		force:      force,
+		name:           name,
+		namespace:      namespace,
+		container:      container,
+		deviceType:     devType,
+		timeoutSeconds: uint32(timeout),
+		force:          force,
 	}, nil
 }
 
@@ -209,9 +224,9 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_ = response.WriteError(http.StatusNotFound, fmt.Errorf("target pod does not exist: %w", err))
-			return
+		} else {
+			_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		}
-		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("error getting Pod: %w", err))
 		return
 	}
 	mPod, err := s.GetMounterPodOnNodeName(pod.Spec.NodeName)
@@ -219,7 +234,8 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure())
+
+	conn, err := grpc.Dial(mPod.Status.PodIP+s.targetServerPort, grpc.WithInsecure(), grpc.WithTimeout(5*time.Second))
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, fmt.Errorf("failed to connect to device mounter: %v", err))
 		return
@@ -238,7 +254,10 @@ func (s *service) UnMountDevice(request *restful.Request, response *restful.Resp
 		Force:        params.force,
 		DeviceType:   params.deviceType,
 	}
-	resp, err := client.UnMountDevice(request.Request.Context(), &req)
+	timeout := time.Duration(params.timeoutSeconds) * time.Second
+	ctx, cancelFunc := context.WithTimeout(request.Request.Context(), timeout)
+	defer cancelFunc()
+	resp, err := client.UnMountDevice(ctx, &req)
 	if err != nil {
 		_ = response.WriteError(http.StatusInternalServerError, err)
 		return

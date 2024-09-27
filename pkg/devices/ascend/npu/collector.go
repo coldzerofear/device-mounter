@@ -48,16 +48,17 @@ func (c *NPUCollector) GetPodNPUResourcesFunc(matchFunc func(*v1alpha1.PodResour
 	return nil
 }
 
-func GetRealDeviceForAnnotations(kubeClient *kubernetes.Clientset, pod *v1.Pod) []string {
+func GetRealDeviceForAnnotations(ctx context.Context, kubeClient *kubernetes.Clientset, pod *v1.Pod) []string {
 	kltDevStr, ok1 := pod.Annotations[common.ResourceNamePrefix+common.Pod2kl]
 	realDevStr, ok2 := pod.Annotations[common.ResourceNamePrefix+common.PodRealAlloc]
 	if !ok1 || !ok2 {
-		newPod, _ := kubeClient.CoreV1().Pods(pod.Namespace).
-			Get(context.Background(), pod.Name, metav1.GetOptions{})
-		if newPod.Annotations != nil {
-			kltDevStr, ok1 = pod.Annotations[common.ResourceNamePrefix+common.Pod2kl]
-			realDevStr, ok2 = newPod.Annotations[common.ResourceNamePrefix+common.PodRealAlloc]
+		newPod, err := kubeClient.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+		if err != nil {
+			newPod = &v1.Pod{}
+			newPod.Annotations = map[string]string{}
 		}
+		kltDevStr, ok1 = pod.Annotations[common.ResourceNamePrefix+common.Pod2kl]
+		realDevStr, ok2 = newPod.Annotations[common.ResourceNamePrefix+common.PodRealAlloc]
 	}
 	if ok1 && ok2 && kltDevStr != realDevStr {
 		return strings.Split(realDevStr, common.CommaSepDev)
@@ -65,7 +66,7 @@ func GetRealDeviceForAnnotations(kubeClient *kubernetes.Clientset, pod *v1.Pod) 
 	return nil
 }
 
-func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, slavePods []*v1.Pod, f func(devId int) (api.DeviceInfo, error)) ([]api.DeviceInfo, error) {
+func (c *NPUCollector) GetSlavePodsDeviceInfo(ctx context.Context, kubeClient *kubernetes.Clientset, slavePods []*v1.Pod, f func(devId int) (api.DeviceInfo, error)) ([]api.DeviceInfo, error) {
 	var containerDevices []*v1alpha1.ContainerDevices
 
 	matchFunc := func(res *v1alpha1.PodResources) (int, bool) {
@@ -80,7 +81,8 @@ func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, 
 		pod := slavePods[idx]
 		klog.Infoln("Current matched npu slave pod", "name", pod.Name, "namespace", pod.Namespace)
 		// TODO 通过注解得知真实分配的设备
-		if realDevs := GetRealDeviceForAnnotations(kubeClient, pod); realDevs != nil {
+		realDevs := GetRealDeviceForAnnotations(ctx, kubeClient, pod)
+		if len(realDevs) > 0 {
 			containerDevices = append(containerDevices, &v1alpha1.ContainerDevices{
 				ResourceName: common.ResourceNamePrefix,
 				DeviceIds:    realDevs,
@@ -95,6 +97,7 @@ func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, 
 				continue
 			}
 			var ctrDevices []*v1alpha1.ContainerDevices
+
 			// TODO 从volcano获得分配的设备
 			for _, dev := range containerResources.GetDevices() {
 				// 过滤掉非Ascend NPU设备
@@ -113,17 +116,24 @@ func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, 
 				}
 
 				if strings.Contains(dev.GetResourceName(), common.AiCoreResourceName) {
-					// vnpu
-					// huawei.com/npu-core:0-vir02
+					// 动态vNPU设备分配
+					// example: huawei.com/npu-core:0-vir02、huawei.com/npu-core:0-vir04
 					deviceInfos := strings.Split(annotation, common.MiddelLine)
 					if len(deviceInfos) > 1 {
-						//// 如果volcano能调度成功并且设备插件没报错，到了这里可以忽略错误
-						//phyID, templateName, _ := common.GetVNPUSegmentInfo(deviceInfos)
-						//ascendRuntimeOptions = common.VirtualDev
+						realDevs = GetRealDeviceForAnnotations(ctx, kubeClient, pod)
+						if len(realDevs) > 0 {
+							containerDevices = append(containerDevices, &v1alpha1.ContainerDevices{
+								ResourceName: common.ResourceNamePrefix,
+								DeviceIds:    realDevs,
+							})
+							klog.Infof("The current pod [%s] obtains the actual allocated NPU devices from the annotation [%s]",
+								fmt.Sprintf("%s/%s", pod.Namespace, pod.Name), common.ResourceNamePrefix+common.PodRealAlloc)
+							return nil
+						}
 						// TODO 此时已经无法得知实际分配的设备
 						return fmt.Errorf("Unable to determine the actual device allocated by Volcano")
 					}
-					// huawei.com/npu-core:0,1,2,3
+					// example: huawei.com/npu-core:0,1,2,3
 					ids := strings.Split(deviceInfos[0], common.CommaSepDev)
 					var phyDevs []string
 					for _, id := range ids {
@@ -135,6 +145,7 @@ func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, 
 						DeviceIds:    phyDevs,
 					}}
 				} else {
+					// 静态设备分配
 					ctrDevices = []*v1alpha1.ContainerDevices{{
 						ResourceName: dev.GetResourceName(),
 						DeviceIds:    strings.Split(annotation, common.CommaSepDev),
@@ -142,12 +153,14 @@ func (c *NPUCollector) GetSlavePodsDeviceInfo(kubeClient *kubernetes.Clientset, 
 				}
 				break
 			}
+
+			// TODO 通过pod resources得知分配的设备
 			if len(ctrDevices) == 0 {
 				ctrDevices = containerResources.GetDevices()
 				klog.Infof("The current pod [%s] obtains the actual allocated NPU devices from the pod resources",
 					fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
 			}
-			// TODO 通过pod resources得知分配的设备
+
 			containerDevices = append(containerDevices, ctrDevices...)
 			// 退出循环
 			break

@@ -1,6 +1,8 @@
 package gpu
 
 const (
+	PluginName = "NVIDIA_GPU"
+
 	ResourceName = "nvidia.com/gpu"
 
 	DEFAULT_NVIDIA_MAJOR_NUMBER    = 195

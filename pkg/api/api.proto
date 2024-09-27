@@ -22,8 +22,7 @@ message MountDeviceRequest {
   map<string, string> annotations     = 5;
   map<string, string> labels          = 6;
   string              device_type     = 7;
-  uint32              timeout_seconds = 8;
-  repeated string     patches         = 9;
+  repeated string     patches         = 8;
 }
 
 enum ResultCode {

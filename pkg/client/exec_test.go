@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"testing"
 
 	"k8s-device-mounter/pkg/api"
@@ -35,7 +36,7 @@ func Test_ExecCmdToPod(t *testing.T) {
 	container := &api.Container{Name: "ubuntu-container"}
 	//cmd := []string{"sh", "-c", "mkdir -p /etc && mkdir -p /usr/bin && mkdir -p /usr/local/vgpu"}
 	cmd := []string{"sh", "-c", "export CUDA_DEVICE_SM_LIMIT_0=0 CUDA_DEVICE_MEMORY_LIMIT_0=1000m GPU_CORE_UTILIZATION_POLICY=DISABLE CUDA_DEVICE_MEMORY_SHARED_CACHE=/tmp/vgpu/6255821a-40bb-4093-8cf4-8696503ea138.cache NVIDIA_VISIBLE_DEVICES=GPU-c496852d-f5df-316c-e2d5-86f0b322ec4c"}
-	_, _, err := ExecCmdToPod(kubeClient, pod, container, cmd)
+	_, _, err := ExecCmdToPod(context.TODO(), kubeClient, pod, container, cmd)
 	if err != nil {
 		t.Error(err)
 	}
@@ -51,7 +52,7 @@ func Test_WriteToPod(t *testing.T) {
 	container := &api.Container{Name: "ubuntu-container"}
 	content := "#!/bin/sh\nexport CUDA_DEVICE_SM_LIMIT_0=0\nexport CUDA_DEVICE_MEMORY_LIMIT_0=1000m\nexport GPU_CORE_UTILIZATION_POLICY=DISABLE\nexport NVIDIA_VISIBLE_DEVICES=GPU-c496852d-f5df-316c-e2d5-86f0b322ec4c\nnvidia-smi"
 	cmd := []string{"sh", "-c", "cat > /initVGPU.sh && chmod +x /initVGPU.sh && /initVGPU.sh"}
-	_, _, err := WriteToPod(kubeClient, pod, container, []byte(content), cmd)
+	_, _, err := WriteToPod(context.TODO(), kubeClient, pod, container, []byte(content), cmd)
 	if err != nil {
 		t.Error(err)
 	}

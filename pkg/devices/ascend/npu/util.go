@@ -10,6 +10,10 @@ import (
 )
 
 const (
+	PluginName = "ASCEND_NPU"
+
+	PodGroupNameAnnotation = "scheduling.k8s.io/group-name"
+
 	InitNPUAnnotations = v1alpha1.Group + "/initNPU"
 
 	AscendRtVisibleDevicesEnv = "ASCEND_RT_VISIBLE_DEVICES"

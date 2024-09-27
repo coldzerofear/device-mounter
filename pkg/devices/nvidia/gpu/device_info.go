@@ -1,6 +1,7 @@
 package gpu
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
@@ -10,7 +11,6 @@ import (
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -34,8 +34,8 @@ func NewNvidiaGPUMounter() (framework.DeviceMounter, error) {
 	return mounter, nil
 }
 
-func (m *NvidiaGPUMounter) DeviceType() string {
-	return "NVIDIA_GPU"
+func (m *NvidiaGPUMounter) GetDeviceType() string {
+	return PluginName
 }
 
 func checkDeviceEnvironment() bool {
@@ -51,29 +51,23 @@ func checkDeviceEnvironment() bool {
 	return true
 }
 
-func (m *NvidiaGPUMounter) CheckMountResources(
-	_ *kubernetes.Clientset,
-	node *v1.Node,
-	_ *v1.Pod,
-	_ *api.Container,
-	request map[v1.ResourceName]resource.Quantity,
-	_, _ map[string]string) (api.ResultCode, string, bool) {
+func (m *NvidiaGPUMounter) ValidateMountRequest(_ context.Context, _ *kubernetes.Clientset,
+	node *v1.Node, _ *v1.Pod, _ *api.Container, request map[v1.ResourceName]resource.Quantity,
+	_, _ map[string]string) error {
 
 	if !util.CheckResourcesInSlice(request, []string{ResourceName}, nil) {
-		return api.ResultCode_Fail, "Request for resources error", false
+		return api.NewMounterError(api.ResultCode_Fail, "Request for resources error")
 	}
 	if !util.CheckResourcesInNode(node, request) {
-		return api.ResultCode_Insufficient, "Insufficient node resources", false
+		return api.NewMounterError(api.ResultCode_Insufficient, "Insufficient node resources")
 	}
-	return api.ResultCode_Success, "", true
+	return nil
 }
 
-func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(
-	ownerPod *v1.Pod,
-	_ *api.Container,
+func (m *NvidiaGPUMounter) BuildSupportPodTemplates(
+	_ context.Context, ownerPod *v1.Pod, _ *api.Container,
 	request map[v1.ResourceName]resource.Quantity,
-	annotations, labels map[string]string,
-	_ []*v1.Pod) ([]*v1.Pod, error) {
+	annotations, labels map[string]string, _ []*v1.Pod) ([]*v1.Pod, error) {
 
 	quantity := request[ResourceName]
 	gpuNumber := quantity.Value()
@@ -92,7 +86,7 @@ func (m *NvidiaGPUMounter) BuildDeviceSlavePodTemplates(
 	return slavePods, nil
 }
 
-func (m *NvidiaGPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.StatusCode, error) {
+func (m *NvidiaGPUMounter) VerifySupportPodStatus(_ context.Context, slavePod *v1.Pod) (api.StatusCode, error) {
 	if slavePod.Status.Phase == v1.PodRunning {
 		return api.Success, nil
 	}
@@ -108,12 +102,13 @@ func (m *NvidiaGPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	}
 	if slavePod.Status.Conditions[0].Reason == v1.PodReasonUnschedulable ||
 		slavePod.Status.Conditions[0].Reason == v1.PodReasonSchedulerError {
-		return api.Unschedulable, fmt.Errorf(slavePod.Status.Conditions[0].Message)
+		err := api.NewMounterError(api.ResultCode_Insufficient, slavePod.Status.Conditions[0].Message)
+		return api.Unschedulable, err
 	}
 	return api.Wait, nil
 }
 
-func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod *v1.Pod,
+func (m *NvidiaGPUMounter) GetDeviceInfosToMount(_ context.Context, _ *kubernetes.Clientset, ownerPod *v1.Pod,
 	container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 
 	var deviceInfos []api.DeviceInfo
@@ -187,11 +182,11 @@ func (m *NvidiaGPUMounter) GetMountDeviceInfo(_ *kubernetes.Clientset, ownerPod 
 	return deviceInfos, nil
 }
 
-func (m *NvidiaGPUMounter) MountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *NvidiaGPUMounter) ExecutePostMountActions(_ context.Context, _ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 
-func (m *NvidiaGPUMounter) GetUnMountDeviceInfo(_ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *NvidiaGPUMounter) GetDeviceInfosToUnmount(_ context.Context, _ *kubernetes.Clientset, _ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 	var deviceInfos []api.DeviceInfo
 	var gpus []*NvidiaGPU
 	for _, slavePod := range slavePods {
@@ -217,7 +212,7 @@ func (m *NvidiaGPUMounter) GetUnMountDeviceInfo(_ *kubernetes.Clientset, _ *v1.P
 	return deviceInfos, nil
 }
 
-func (m *NvidiaGPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
+func (m *NvidiaGPUMounter) GetDevicesActiveProcessIDs(_ context.Context, containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
 	if err := m.UpdateGPUStatus(); err != nil {
 		return nil, err
 	}
@@ -249,19 +244,16 @@ func (m *NvidiaGPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 }
 
 // 卸载设备成功前的后续动作
-func (m *NvidiaGPUMounter) UnMountDeviceInfoAfter(_ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
+func (m *NvidiaGPUMounter) ExecutePostUnmountActions(_ context.Context, _ *kubernetes.Clientset, _ util.Config, _ *v1.Pod, _ *api.Container, _ []*v1.Pod) error {
 	return nil
 }
 
-func (m *NvidiaGPUMounter) CleanupPodResources(_ *kubernetes.Clientset,
-	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *NvidiaGPUMounter) GetPodsToCleanup(_ context.Context, _ *kubernetes.Clientset,
+	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []api.ObjectKey {
 
-	slavePodKeys := make([]types.NamespacedName, len(slavePods))
+	objKeys := make([]api.ObjectKey, len(slavePods))
 	for i, slavePod := range slavePods {
-		slavePodKeys[i] = types.NamespacedName{
-			Name:      slavePod.Name,
-			Namespace: slavePod.Namespace,
-		}
+		objKeys[i] = api.ObjectKeyFromObject(slavePod)
 	}
-	return slavePodKeys
+	return objKeys
 }

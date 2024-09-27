@@ -13,7 +13,6 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/client"
 	"k8s-device-mounter/pkg/config"
 	"k8s-device-mounter/pkg/framework"
 	"k8s-device-mounter/pkg/util"
@@ -22,11 +21,11 @@ import (
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 )
@@ -47,7 +46,7 @@ func CheckPodContainerStatus(pod *v1.Pod, cont *api.Container) error {
 
 func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error) {
 	if pod == nil {
-		return nil, fmt.Errorf("The target pod is empty")
+		return nil, api.NewMounterError(api.ResultCode_Invalid, "The target pod is empty")
 	}
 	if cont == nil {
 		if len(pod.Spec.Containers) == 1 {
@@ -56,12 +55,13 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 			ctr.Index = 0
 			return ctr, nil
 		}
-		return nil, fmt.Errorf("Pod has multiple containers, target container must be specified")
+		msg := "Pod has multiple containers, target container must be specified"
+		return nil, api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
 	for i, container := range pod.Spec.Containers {
 		checkSidecarFunc := func() error {
 			if util.IsSidecar(container) {
-				return fmt.Errorf("Target container is a sidecar container")
+				return api.NewMounterError(api.ResultCode_Invalid, "Target container is a sidecar container")
 			}
 			return nil
 		}
@@ -83,7 +83,8 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 			return ctr, nil
 		}
 	}
-	return nil, fmt.Errorf("Target container %v not found", cont)
+	msg := fmt.Sprintf("Target container %v not found", cont)
+	return nil, api.NewMounterError(api.ResultCode_Invalid, msg)
 }
 
 func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
@@ -98,7 +99,8 @@ func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
 		paramNames = append(paramNames, "'resources'")
 	}
 	if len(paramNames) > 0 {
-		return fmt.Errorf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		msg := fmt.Sprintf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		return api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
 	// TODO 没指定要挂载的容器，默认选择index0
 	if req.GetContainer() == nil {
@@ -122,7 +124,8 @@ func CheckUnMountDeviceRequest(req *api.UnMountDeviceRequest) error {
 		paramNames = append(paramNames, "'pod_namespace'")
 	}
 	if len(paramNames) > 0 {
-		return fmt.Errorf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		msg := fmt.Sprintf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		return api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
 	// TODO 没指定要卸载的容器，默认选择index0
 	if req.GetContainer() == nil {
@@ -132,37 +135,41 @@ func CheckUnMountDeviceRequest(req *api.UnMountDeviceRequest) error {
 }
 
 // TODO 暂时忽略删除失败 （设备泄漏风险）
-func GarbageCollectionPods(ctx context.Context, kubeClient *kubernetes.Clientset, keys []types.NamespacedName) error {
-	var err error
-	options := metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64(0)}
-	for _, objKey := range keys {
+func GarbageCollectionPods(kubeClient *kubernetes.Clientset, objKeys []api.ObjectKey) []api.ObjectKey {
+	var (
+		err          error
+		deleteFailed []api.ObjectKey
+	)
+	options := metav1.NewDeleteOptions(0)
+	for i, objKey := range objKeys {
 		klog.Infoln("Garbage collection pod", objKey.String())
-		if err = util.LoopRetry(3, 100*time.Millisecond, func() (bool, error) {
-			delErr := kubeClient.CoreV1().Pods(objKey.Namespace).Delete(ctx, objKey.Name, options)
-			if delErr != nil && !apierror.IsNotFound(delErr) {
-				klog.Errorln("Garbage collection pod failed", objKey.String())
-				return false, nil
-			}
-			return true, nil
-		}); err != nil {
-			klog.Errorln(err)
+		if objKey.UID != nil {
+			options.Preconditions = metav1.NewUIDPreconditions(*objKey.UID)
+		} else {
+			options.Preconditions = nil
+		}
+		err = retry.OnError(retry.DefaultRetry, func(err error) bool {
+			return !apierror.IsNotFound(err)
+		}, func() error {
+			return kubeClient.CoreV1().Pods(objKey.Namespace).Delete(context.Background(), objKey.Name, *options)
+		})
+		if apierror.IsNotFound(err) {
+			err = nil
+		}
+		if err != nil {
+			deleteFailed = append(deleteFailed, objKeys[i])
+			klog.Errorf("GC pod %s failed: %v", objKey.String(), err)
 		}
 	}
-	return err
+	return deleteFailed
 }
 
-func WaitSlavePodsReady(
-	ctx context.Context,
-	podLister listerv1.PodLister,
-	kubeClient *kubernetes.Clientset,
-	deviceMounter framework.DeviceMounter,
-	timeoutSecond uint32,
-	slavePodKeys []types.NamespacedName) ([]*v1.Pod, []*v1.Pod, api.ResultCode, error) {
-	//readySlavePods := make([]*v1.Pod, len(slavePodNames))
+func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
+	kubeClient *kubernetes.Clientset, deviceMounter framework.DeviceMounter,
+	slavePodKeys []api.ObjectKey) ([]*v1.Pod, []*v1.Pod, error) {
 
 	readySlavePods := make([]*v1.Pod, 0)
 	skipSlavePods := make([]*v1.Pod, 0)
-	resCode := api.ResultCode_Fail
 	condition := func(ctx context.Context) (bool, error) {
 		for _, slaveKey := range slavePodKeys {
 			//wait:
@@ -170,23 +177,22 @@ func WaitSlavePodsReady(
 			if err != nil {
 				if apierror.IsNotFound(err) {
 					// 当本地缓存找不到则从api-server处查询
-					slavePod, err = client.RetryGetPodByName(kubeClient, slaveKey.Name, slaveKey.Namespace, 3)
+					err = retry.OnError(retry.DefaultRetry, func(err error) bool { return !apierror.IsNotFound(err) }, func() error {
+						slavePod, err = kubeClient.CoreV1().Pods(slaveKey.Namespace).Get(ctx, slaveKey.Name, metav1.GetOptions{})
+						return err
+					})
 				}
 				if err != nil {
 					klog.V(3).ErrorS(err, "Get slave pod failed", "name", slaveKey.Name, "namespace", slaveKey.Namespace)
 					return false, err
 				}
 			}
-			statusCode, err := deviceMounter.CheckDeviceSlavePodStatus(slavePod.DeepCopy())
+			statusCode, err := deviceMounter.VerifySupportPodStatus(ctx, slavePod.DeepCopy())
 			switch statusCode {
 			case api.Success:
-				//readySlavePods[i] = slavePod.DeepCopy()
 				readySlavePods = append(readySlavePods, slavePod.DeepCopy())
 				continue
 			case api.Wait:
-				//time.Sleep(100 * time.Millisecond)
-				//goto wait
-
 				// 等待将进行重试
 				// 重置已有计数
 				if len(readySlavePods) > 0 {
@@ -201,11 +207,17 @@ func WaitSlavePodsReady(
 				skipSlavePods = append(skipSlavePods, slavePod.DeepCopy())
 				continue
 			case api.Unschedulable:
-				resCode = api.ResultCode_Insufficient
+				if err == nil {
+					err = fmt.Errorf("Slave Pod %s is not schedulable", slaveKey.String())
+				}
 				return true, err
 			case api.Fail:
-				// 抛出错误
-				return false, fmt.Errorf("Failed to check slave pod status: %v", err)
+				if err == nil {
+					err = fmt.Errorf("Failed to verify slave pod %s status", slaveKey.String())
+				} else if _, ok := err.(*api.MounterError); !ok {
+					err = fmt.Errorf("Failed to verify slave pod %s status: %v", slaveKey.String(), err)
+				}
+				return false, err
 			default:
 				// 抛出错误
 				return false, fmt.Errorf("The status return code of the position is incorrect: %v", statusCode)
@@ -213,10 +225,8 @@ func WaitSlavePodsReady(
 		}
 		return true, nil
 	}
-
-	err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond,
-		time.Duration(int64(timeoutSecond))*time.Second, false, condition)
-	return readySlavePods, skipSlavePods, resCode, err
+	err := wait.PollUntilContextCancel(ctx, 100*time.Millisecond, false, condition)
+	return readySlavePods, skipSlavePods, err
 }
 
 func Owner(pod *v1.Pod) []metav1.OwnerReference {
@@ -242,7 +252,7 @@ func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, conta
 	if err != nil {
 		return nil, err
 	}
-	var slavePods []*v1.Pod
+	slavePods := make([]*v1.Pod, 0, len(pods))
 	for _, pod := range pods {
 		if pod.Annotations != nil && pod.Annotations[config.DeviceTypeAnnotationKey] == devType {
 			slavePods = append(slavePods, pod.DeepCopy())
@@ -426,58 +436,46 @@ func (s *DeviceMounterImpl) DeleteDeviceFiles(cfg *util.Config, devInfos []api.D
 	return rollback, nil
 }
 
-func (s *DeviceMounterImpl) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, *api.DeviceResponse) {
+func (s *DeviceMounterImpl) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, error) {
 	// 获取容器cgroup路径
 	cgroupPath, err := s.GetCGroupPath(pod, container)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get cgroup path error")
-		return nil, cgroupPath, &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: err.Error(),
-		}
+		return nil, cgroupPath, err
 	}
 	klog.V(4).Infoln("current container cgroup path", cgroupPath)
 	pids, err := cgroups.GetAllPids(cgroupPath)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get container pids error")
-		return pids, cgroupPath, &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Error in obtaining container process id: %v", err),
-		}
+		return pids, cgroupPath, fmt.Errorf("Error in obtaining container process id: %v", err)
 	}
 	if len(pids) == 0 {
-		return pids, cgroupPath, &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Process ID for target container not found"),
-		}
+		return pids, cgroupPath, fmt.Errorf("Process ID for target container not found")
 	}
 	return pids, cgroupPath, nil
 }
 
-func (s *DeviceMounterImpl) GetTargetPod(name, namespace string) (*v1.Pod, *api.DeviceResponse) {
-	pod, err := client.RetryGetPodByName(s.KubeClient, name, namespace, 3)
+func (s *DeviceMounterImpl) GetTargetPod(ctx context.Context, name, namespace string) (*v1.Pod, error) {
+	var (
+		pod *v1.Pod
+		err error
+	)
+
+	err = retry.OnError(retry.DefaultRetry, func(err error) bool {
+		return !apierror.IsNotFound(err) // 错误不为 not found 时重试
+	}, func() error {
+		pod, err = s.KubeClient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{
+			ResourceVersion: "0",
+		})
+		return err
+	})
 	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found pod", "name", name, "namespace", namespace)
-			return nil, &api.DeviceResponse{
-				Result:  api.ResultCode_NotFound,
-				Message: err.Error(),
-			}
-		} else {
-			klog.ErrorS(err, "Get pod failed", "name", name, "namespace", namespace)
-			return nil, &api.DeviceResponse{
-				Result:  api.ResultCode_Fail,
-				Message: err.Error(),
-			}
-		}
+		return nil, err
 	}
-	klog.V(3).InfoS("Get pod success", "name", name, "namespace", namespace)
 	// 校验pod节点
 	if pod.Spec.NodeName != s.NodeName {
-		return nil, &api.DeviceResponse{
-			Result:  api.ResultCode_Fail,
-			Message: fmt.Sprintf("Pod is not running on the node %s", s.NodeName),
-		}
+		return nil, fmt.Errorf("Target pod is not running on the node %s", s.NodeName)
 	}
+	klog.V(3).InfoS("Get pod success", "name", name, "namespace", namespace)
 	return pod, nil
 }

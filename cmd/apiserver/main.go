@@ -159,7 +159,7 @@ func apiServiceV1alpha1(handlers apiserver.APIService) *restful.WebService {
 		Param(ws.PathParameter("name", "The name of the target pod").Required(true)).
 		Param(ws.QueryParameter("device_type", "Mounted device resource types").Required(true)).
 		Param(ws.QueryParameter("container", "The name of the target container").Required(false)).
-		Param(ws.QueryParameter("wait_second", "Waiting for slave pod ready timeout (seconds)").
+		Param(ws.QueryParameter("wait_second", "Waiting for timeout period (seconds)").
 			Required(false).DataType("integer").DefaultValue("10")))
 
 	// TODO 卸载设备
@@ -172,6 +172,8 @@ func apiServiceV1alpha1(handlers apiserver.APIService) *restful.WebService {
 		Param(ws.PathParameter("name", "The name of the target pod").Required(true)).
 		Param(ws.QueryParameter("device_type", "Mounted device resource types").Required(true)).
 		Param(ws.QueryParameter("container", "The name of the target container").Required(false)).
+		Param(ws.QueryParameter("wait_second", "Waiting for timeout period (seconds)").
+			Required(false).DataType("integer").DefaultValue("10")).
 		Param(ws.QueryParameter("force", "Do you want to force device uninstallation").
 			Required(false).DefaultValue("false")))
 

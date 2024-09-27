@@ -19,7 +19,7 @@ import (
 	"k8s.io/kubectl/pkg/cmd/util"
 )
 
-func WriteToPod(kubeclient *kubernetes.Clientset,
+func WriteToPod(ctx context.Context, kubeclient *kubernetes.Clientset,
 	pod *v1.Pod, ctr *api.Container, content []byte, cmd []string) (string, string, error) {
 	req := kubeclient.CoreV1().RESTClient().Post().
 		Resource("pods").
@@ -45,7 +45,7 @@ func WriteToPod(kubeclient *kubernetes.Clientset,
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	err = executor.StreamWithContext(
-		context.Background(),
+		ctx,
 		remotecommand.StreamOptions{
 			Stdin:  buf,
 			Stdout: stdout,
@@ -60,7 +60,7 @@ func WriteToPod(kubeclient *kubernetes.Clientset,
 	return stdout.String(), stderr.String(), nil
 }
 
-func ExecCmdToPod(kubeclient *kubernetes.Clientset,
+func ExecCmdToPod(ctx context.Context, kubeclient *kubernetes.Clientset,
 	pod *v1.Pod, ctr *api.Container, cmd []string) (string, string, error) {
 	// 执行命令
 	req := kubeclient.CoreV1().RESTClient().Post().
@@ -86,7 +86,7 @@ func ExecCmdToPod(kubeclient *kubernetes.Clientset,
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	err = executor.StreamWithContext(
-		context.Background(),
+		ctx,
 		remotecommand.StreamOptions{
 			Stdin:  nil,
 			Stdout: stdout,

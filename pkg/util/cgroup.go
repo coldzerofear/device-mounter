@@ -395,7 +395,7 @@ func SetDeviceRulesV1(path string, r *configs.Resources) (func() error, error) {
 	}
 	target := &devices.Emulator{}
 	for _, rule := range r.Devices {
-		if err := target.Apply(*rule); err != nil {
+		if err = target.Apply(*rule); err != nil {
 			return NilCloser, err
 		}
 	}

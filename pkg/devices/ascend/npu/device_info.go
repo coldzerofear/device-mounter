@@ -17,7 +17,6 @@ import (
 	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -65,41 +64,35 @@ func NewAscendNPUMounter() (framework.DeviceMounter, error) {
 	return mounter, nil
 }
 
-func (m *AscendNPUMounter) DeviceType() string {
-	return "ASCEND_NPU"
+func (m *AscendNPUMounter) GetDeviceType() string {
+	return PluginName
 }
 
-func (m *AscendNPUMounter) CheckMountResources(
-	_ *kubernetes.Clientset,
-	node *v1.Node,
-	ownerPod *v1.Pod,
-	container *api.Container,
-	resources map[v1.ResourceName]resource.Quantity,
-	annotations, labels map[string]string) (api.ResultCode, string, bool) {
+func (m *AscendNPUMounter) ValidateMountRequest(_ context.Context, _ *kubernetes.Clientset,
+	node *v1.Node, ownerPod *v1.Pod, container *api.Container, resources map[v1.ResourceName]resource.Quantity,
+	annotations, labels map[string]string) error {
 
 	condition1 := CheckRequest910Resources(resources)
 	condition2 := CheckRequestDynamicResources(resources, annotations)
 	if !condition1 && !condition2 {
-		return api.ResultCode_Fail, "Request for resources error: unsupported resource types", false
+		msg := "Request for resources error: unsupported resource types"
+		return api.NewMounterError(api.ResultCode_Fail, msg)
 	}
 	if !util.CheckResourcesInNode(node, resources) {
-		return api.ResultCode_Insufficient, "Insufficient node resources", false
+		return api.NewMounterError(api.ResultCode_Insufficient, "Insufficient node resources")
 	}
 	// 校验目标容器是否初始化过npu
 	names := ownerPod.Annotations[InitNPUAnnotations]
 	ctrNames := strings.Split(strings.TrimSpace(names), ",")
 	if slices.Contains(ctrNames, container.Name) {
-		return api.ResultCode_Fail, "The target container has initialized the NPU and cannot be mounted again", false
+		msg := "The target container has initialized the NPU and cannot be mounted again"
+		return api.NewMounterError(api.ResultCode_Fail, msg)
 	}
-	return api.ResultCode_Success, "", true
+	return nil
 }
 
-func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(
-	ownerPod *v1.Pod,
-	_ *api.Container,
-	request map[v1.ResourceName]resource.Quantity,
-	annotations, labels map[string]string,
-	_ []*v1.Pod) ([]*v1.Pod, error) {
+func (m *AscendNPUMounter) BuildSupportPodTemplates(_ context.Context, ownerPod *v1.Pod, _ *api.Container,
+	request map[v1.ResourceName]resource.Quantity, annotations, labels map[string]string, _ []*v1.Pod) ([]*v1.Pod, error) {
 
 	slavePod := util.NewDeviceSlavePod(ownerPod, request, annotations, labels)
 	// TODO slave pod 不用挂载驱动目录
@@ -109,7 +102,7 @@ func (m *AscendNPUMounter) BuildDeviceSlavePodTemplates(
 	return []*v1.Pod{slavePod}, nil
 }
 
-func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.StatusCode, error) {
+func (m *AscendNPUMounter) VerifySupportPodStatus(_ context.Context, slavePod *v1.Pod) (api.StatusCode, error) {
 	if slavePod.Status.Phase == v1.PodRunning {
 		return api.Success, nil
 	}
@@ -125,16 +118,14 @@ func (m *AscendNPUMounter) CheckDeviceSlavePodStatus(slavePod *v1.Pod) (api.Stat
 	}
 	if slavePod.Status.Conditions[0].Reason == v1.PodReasonUnschedulable ||
 		slavePod.Status.Conditions[0].Reason == v1.PodReasonSchedulerError {
-		return api.Unschedulable, fmt.Errorf(slavePod.Status.Conditions[0].Message)
+		err := api.NewMounterError(api.ResultCode_Insufficient, slavePod.Status.Conditions[0].Message)
+		return api.Unschedulable, err
 	}
 	return api.Wait, nil
 }
 
-func (m *AscendNPUMounter) GetMountDeviceInfo(
-	kubeClient *kubernetes.Clientset,
-	ownerPod *v1.Pod,
-	container *api.Container,
-	slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *AscendNPUMounter) GetDeviceInfosToMount(ctx context.Context, kubeClient *kubernetes.Clientset,
+	ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
 
 	getDevInfoFunc := func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
@@ -158,7 +149,7 @@ func (m *AscendNPUMounter) GetMountDeviceInfo(
 			},
 		}, nil
 	}
-	deviceInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, getDevInfoFunc)
+	deviceInfos, err := m.GetSlavePodsDeviceInfo(ctx, kubeClient, slavePods, getDevInfoFunc)
 	if err != nil {
 		return deviceInfos, err
 	}
@@ -187,7 +178,9 @@ func (m *AscendNPUMounter) GetMountDeviceInfo(
 	return deviceInfos, nil
 }
 
-func (m *AscendNPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) ExecutePostMountActions(ctx context.Context, kubeClient *kubernetes.Clientset,
+	_ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
+
 	if !HasNPU(ownerPod, container) {
 		var contNames []string
 		names := ownerPod.Annotations[InitNPUAnnotations]
@@ -197,7 +190,7 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset
 		if !slices.Contains(contNames, container.Name) {
 			contNames = append(contNames, container.Name)
 			annotations := map[string]string{InitNPUAnnotations: strings.Join(contNames, ",")}
-			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+			if err := client.PatchPodAnnotations(ctx, kubeClient, ownerPod, annotations); err != nil {
 				return fmt.Errorf("Failed to patch pod annotation [%s]: %v", InitNPUAnnotations, err)
 			}
 		}
@@ -205,11 +198,13 @@ func (m *AscendNPUMounter) MountDeviceInfoAfter(kubeClient *kubernetes.Clientset
 	return nil
 }
 
-func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+func (m *AscendNPUMounter) GetDeviceInfosToUnmount(ctx context.Context, kubeClient *kubernetes.Clientset,
+	ownerPod *v1.Pod, container *api.Container, slavePods []*v1.Pod) ([]api.DeviceInfo, error) {
+
 	if HasNPU(ownerPod, container) {
 		return nil, fmt.Errorf("Currently not supported for uninstalling Ascend NPUs")
 	}
-	devInfos, err := m.GetSlavePodsDeviceInfo(kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
+	devInfos, err := m.GetSlavePodsDeviceInfo(ctx, kubeClient, slavePods, func(devId int) (api.DeviceInfo, error) {
 		deviceId := strconv.Itoa(devId)
 		deviceFilePath := ASCEND_DEVICE_FILE_PREFIX + deviceId
 		if IsVirtDev(devId) {
@@ -262,7 +257,9 @@ func (m *AscendNPUMounter) GetUnMountDeviceInfo(kubeClient *kubernetes.Clientset
 // 版本配套信息 https://www.hiascend.com/document/detail/zh/mindx-dl/60rc2/description/releasenote/mxreleasenote_006.html
 // Mindx v6.0-配套软件下：host进程命名空间无法查询到容器进程，强烈建议升级Mindx配套软件到v6.0+
 // 版本配套信息 https://www.hiascend.com/document/detail/zh/mindx-dl/501/releasenote/mxreleasenote_002.html
-func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, deviceInfos []api.DeviceInfo) ([]int, error) {
+func (m *AscendNPUMounter) GetDevicesActiveProcessIDs(_ context.Context,
+	containerPids []int, _ []api.DeviceInfo) ([]int, error) {
+
 	processInfos, err := m.GetRunningProcess()
 	if err != nil {
 		return nil, err
@@ -280,7 +277,7 @@ func (m *AscendNPUMounter) GetDeviceRunningProcesses(containerPids []int, device
 }
 
 // 卸载设备成功前的后续动作
-func (m *AscendNPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clientset, _ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
+func (m *AscendNPUMounter) ExecutePostUnmountActions(ctx context.Context, kubeClient *kubernetes.Clientset, _ util.Config, ownerPod *v1.Pod, container *api.Container, _ []*v1.Pod) error {
 	if names := strings.TrimSpace(ownerPod.Annotations[InitNPUAnnotations]); len(names) > 0 {
 		oldNames := strings.Split(names, ",")
 		newNames := util.DeleteSliceFunc(oldNames, func(s string) bool {
@@ -288,7 +285,7 @@ func (m *AscendNPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clients
 		})
 		if len(oldNames) != len(newNames) {
 			annotations := map[string]string{InitNPUAnnotations: strings.Join(newNames, ",")}
-			if err := client.PatchPodAnnotations(kubeClient, ownerPod, annotations); err != nil {
+			if err := client.PatchPodAnnotations(ctx, kubeClient, ownerPod, annotations); err != nil {
 				return fmt.Errorf("Failed to patch pod annotation [%s]: %v", InitNPUAnnotations, err)
 			}
 		}
@@ -296,15 +293,12 @@ func (m *AscendNPUMounter) UnMountDeviceInfoAfter(kubeClient *kubernetes.Clients
 	return nil
 }
 
-func (m *AscendNPUMounter) CleanupPodResources(_ *kubernetes.Clientset,
-	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []types.NamespacedName {
+func (m *AscendNPUMounter) GetPodsToCleanup(_ context.Context, _ *kubernetes.Clientset,
+	_ *v1.Pod, _ *api.Container, slavePods []*v1.Pod) []api.ObjectKey {
 
-	slavePodKeys := make([]types.NamespacedName, len(slavePods))
+	podKeys := make([]api.ObjectKey, len(slavePods))
 	for i, slavePod := range slavePods {
-		slavePodKeys[i] = types.NamespacedName{
-			Name:      slavePod.Name,
-			Namespace: slavePod.Namespace,
-		}
+		podKeys[i] = api.ObjectKeyFromObject(slavePod)
 	}
-	return slavePodKeys
+	return podKeys
 }

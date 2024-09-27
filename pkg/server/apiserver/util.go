@@ -31,11 +31,12 @@ type requestMountParams struct {
 }
 
 type requestUnMountParams struct {
-	name       string
-	namespace  string
-	container  string
-	deviceType string
-	force      bool
+	name           string
+	namespace      string
+	container      string
+	deviceType     string
+	timeoutSeconds uint32
+	force          bool
 }
 
 func (s *service) GetMounterPodOnNodeName(nodeName string) (*v1.Pod, error) {

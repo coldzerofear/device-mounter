@@ -1,6 +1,7 @@
 package vgpu
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -24,6 +25,8 @@ import (
 )
 
 const (
+	PluginName = "VOLCANO_VGPU"
+
 	InitVGPUAnnotations = v1alpha1.Group + "/initVGPU"
 
 	AssignedIDsAnnotations = "volcano.sh/vgpu-ids-new"
@@ -122,6 +125,8 @@ type sharedRegionT struct {
 	lastKernelTime    int64
 	unused            [4]uint64
 }
+
+type RollBackFunc func() error
 
 func mmapVGPUCacheConfig(cacheDir string) (*sharedRegionT, []byte, error) {
 	files, err := ioutil.ReadDir(cacheDir)
@@ -381,38 +386,22 @@ func GetInitVGPUShell(envs []string) string {
 	return initShell
 }
 
-func execNvidiaSMI(kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container) error {
+func execNvidiaSMI(ctx context.Context, kubeClient *kubernetes.Clientset, ownerPod *v1.Pod, container *api.Container) error {
 	cmd := []string{"nvidia-smi"}
-	_, _, err := client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+	_, _, err := client.ExecCmdToPod(ctx, kubeClient, ownerPod, container, cmd)
 	if err != nil {
 		// 这里先忽略失败
 		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
 		cmd = []string{"sh", "-c", "nvidia-smi"}
-		_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+		_, _, err = client.ExecCmdToPod(ctx, kubeClient, ownerPod, container, cmd)
 	}
 	if err != nil {
 		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
 		cmd = []string{"bash", "-c", "nvidia-smi"}
-		_, _, err = client.ExecCmdToPod(kubeClient, ownerPod, container, cmd)
+		_, _, err = client.ExecCmdToPod(ctx, kubeClient, ownerPod, container, cmd)
 	}
 	if err != nil {
 		klog.Errorf("try exec [%s] cmd failed: %v", strings.Join(cmd, " "), err)
 	}
 	return err
 }
-
-//func read_version_from_proc() error {
-//	file, err := os.Open(DRIVER_VERSION_PROC_PATH)
-//	if err != nil {
-//		return fmt.Errorf("Failed to open file %s: %v", DRIVER_VERSION_PROC_PATH, err)
-//	}
-//	compile := regexp.MustCompile("([0-9]+)(\\.[0-9]+)+")
-//	compile.FindAllString()
-//	scanner := bufio.NewScanner(file)
-//	for scanner.Scan() {
-//		line := scanner.Text()
-//		allString := compile.FindAllString(line, 1)
-//		fmt.Println(allString)
-//	}
-//	return fmt.Errorf("Version number not recognized")
-//}

@@ -44,11 +44,11 @@ Path Param:
 
 Query Param:
 
-| Param Name  | Data type | description                            |
-|-------------|-----------|----------------------------------------|
-| device_type | string    | The type of device to be mounted       |
-| container   | string    | Target container name                  |
-| wait_second | integer   | Whether slave pods ready time (second) |
+| Param Name  | Data type | description                           |
+|-------------|-----------|---------------------------------------|
+| device_type | string    | The type of device to be mounted      |
+| container   | string    | Target container name                 |
+| wait_second | integer   | Waiting for timeout period (second)   |
 
 Body Param:
 ```json
@@ -86,10 +86,12 @@ Path Param:
 | name        | string    | Target pod name      |
 | namespaces  | string    | Target pod namespace |
 
+
 Query Param:
 
 | Param Name  | Data type | description                                                       |
 |-------------|-----------|-------------------------------------------------------------------|
 | device_type | string    | The type of device to be mounted                                  |
 | container   | string    | Target container name                                             |
+| wait_second | integer   | Waiting for timeout period (second)                               |
 | force       | integer   | Whether to force uninstallation (killing processes on the device) |
