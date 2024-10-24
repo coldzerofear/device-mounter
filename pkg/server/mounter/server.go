@@ -62,13 +62,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 查询目标pod
 	var pod *v1.Pod
 	pod, err = s.GetTargetPod(ctx, req.PodName, req.PodNamespace)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
-			resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
-		} else {
-			klog.ErrorS(err, "Get target Pod failed", "name", req.PodName, "namespace", req.PodNamespace)
-		}
+	if apierror.IsNotFound(err) {
+		klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
+		resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
+		return
+	} else if err != nil {
+		klog.ErrorS(err, "Get target Pod failed", "name", req.PodName, "namespace", req.PodNamespace)
 		return
 	}
 
@@ -106,13 +105,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 
 	// 查询node
 	node, err := s.NodeLister.Get(s.NodeName)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found target node", "name", s.NodeName)
-			resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
-		} else {
-			klog.ErrorS(err, "Get target node failed", "name", s.NodeName)
-		}
+	if apierror.IsNotFound(err) {
+		klog.ErrorS(err, "Not found target node", "name", s.NodeName)
+		resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
+		return
+	} else if err != nil {
+		klog.ErrorS(err, "Get target node failed", "name", s.NodeName)
 		return
 	}
 
@@ -131,13 +129,12 @@ func (s *DeviceMounterImpl) MountDevice(ctx context.Context, req *api.MountDevic
 	// 查找历史同类型的slave pods
 	var slavePods []*v1.Pod
 	slavePods, err = s.GetSlavePods(deviceType, pod, container)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found slave pods")
-			resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
-		} else {
-			klog.ErrorS(err, "Get slave pods failed")
-		}
+	if apierror.IsNotFound(err) {
+		klog.ErrorS(err, "Not found slave pods")
+		resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
+		return
+	} else if err != nil {
+		klog.ErrorS(err, "Get slave pods failed")
 		return
 	}
 
@@ -319,13 +316,12 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 	// 查询目标pod
 	var pod *v1.Pod
 	pod, err = s.GetTargetPod(ctx, req.PodName, req.PodNamespace)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
-			resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
-		} else {
-			klog.ErrorS(err, "Get target Pod failed", "name", req.PodName, "namespace", req.PodNamespace)
-		}
+	if apierror.IsNotFound(err) {
+		klog.ErrorS(err, "Not found pod", "name", req.PodName, "namespace", req.PodNamespace)
+		resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
+		return
+	} else if err != nil {
+		klog.ErrorS(err, "Get target Pod failed", "name", req.PodName, "namespace", req.PodNamespace)
 		return
 	}
 
@@ -352,15 +348,15 @@ func (s *DeviceMounterImpl) UnMountDevice(ctx context.Context, req *api.UnMountD
 
 	// 查询当前设备类型的slave pods
 	slavePods, err := s.GetSlavePods(deviceType, pod, container)
-	if err != nil {
-		if apierror.IsNotFound(err) {
-			klog.ErrorS(err, "Not found slave pods")
-			resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
-		} else {
-			klog.ErrorS(err, "Get slave pods failed")
-		}
+	if apierror.IsNotFound(err) {
+		klog.ErrorS(err, "Not found slave pods")
+		resp = &api.DeviceResponse{Result: api.ResultCode_NotFound, Message: err.Error()}
+		return
+	} else if err != nil {
+		klog.ErrorS(err, "Get slave pods failed")
 		return
 	}
+
 	if len(slavePods) == 0 {
 		msg := fmt.Sprintf("No device found for uninstallation")
 		err = api.NewMounterError(api.ResultCode_NotFound, msg)

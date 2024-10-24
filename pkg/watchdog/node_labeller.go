@@ -22,15 +22,15 @@ const (
 	SchedulingLabelPrefix = "scheduling." + v1alpha1.Group
 )
 
-type nodeLabeler struct {
+type nodeLabeller struct {
 	nodeName   string
 	kubeClient *kubernetes.Clientset
 	stopped    chan struct{}
 	listerv1.NodeLister
 }
 
-func NewNodeLabeler(nodeName string, nodeLister listerv1.NodeLister, kubeClient *kubernetes.Clientset) *nodeLabeler {
-	return &nodeLabeler{
+func NewNodeLabeller(nodeName string, nodeLister listerv1.NodeLister, kubeClient *kubernetes.Clientset) *nodeLabeller {
+	return &nodeLabeller{
 		nodeName:   nodeName,
 		kubeClient: kubeClient,
 		NodeLister: nodeLister,
@@ -47,11 +47,11 @@ func ContainsDeviceTypes(labelKey string) bool {
 	return false
 }
 
-func (l *nodeLabeler) WaitForStop() {
+func (l *nodeLabeller) WaitForStop() {
 	<-l.stopped
 }
 
-func (l *nodeLabeler) Start(stopCh <-chan struct{}) {
+func (l *nodeLabeller) Start(stopCh <-chan struct{}) {
 	select {
 	case _, ok := <-l.stopped:
 		if !ok {
@@ -80,7 +80,7 @@ func (l *nodeLabeler) Start(stopCh <-chan struct{}) {
 	}
 }
 
-func (l *nodeLabeler) cleanupLabels() error {
+func (l *nodeLabeller) cleanupLabels() error {
 	node, err := l.Get(l.nodeName)
 	if err != nil {
 		klog.V(3).ErrorS(err, "NodeLabeler Error Searching for Current Node")
@@ -114,7 +114,7 @@ func (l *nodeLabeler) cleanupLabels() error {
 	return nil
 }
 
-func (l *nodeLabeler) updateLabels() error {
+func (l *nodeLabeller) updateLabels() error {
 	node, err := l.Get(l.nodeName)
 	if err != nil {
 		klog.V(3).ErrorS(err, "NodeLabeler Error Searching for Current Node")
