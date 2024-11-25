@@ -229,7 +229,7 @@ func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 	return readySlavePods, skipSlavePods, err
 }
 
-func Owner(pod *v1.Pod) []metav1.OwnerReference {
+func Owner(pod *v1.Pod, controller bool) []metav1.OwnerReference {
 	return []metav1.OwnerReference{
 		{
 			APIVersion:         "v1",
@@ -237,7 +237,7 @@ func Owner(pod *v1.Pod) []metav1.OwnerReference {
 			Name:               pod.GetName(),
 			UID:                pod.GetUID(),
 			BlockOwnerDeletion: func(b bool) *bool { return &b }(true),
-			Controller:         func(b bool) *bool { return &b }(true),
+			Controller:         func(b bool) *bool { return &b }(controller),
 		},
 	}
 }
@@ -342,7 +342,10 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 	mutaPod.Labels[config.MountContainerLabelKey] = container.Name
 	mutaPod.Labels[config.AppComponentLabelKey] = config.CreateManagerBy
 	mutaPod.Labels[config.AppManagedByLabelKey] = config.CreateManagerBy
-	mutaPod.OwnerReferences = Owner(ownerPod)
+	// TODO (Don't set controller)
+	// Batch schedulers like Volcano specify PodGroup for pods through OwnerReference.controller,
+	// which can result in incorrect computation of PodGroup device resources.
+	mutaPod.OwnerReferences = Owner(ownerPod, false)
 	for i, _ := range mutaPod.Spec.Containers {
 		mutaPod.Spec.Containers[i].Image = config.DeviceSlaveContainerImageTag
 		mutaPod.Spec.Containers[i].ImagePullPolicy = config.DeviceSlaveImagePullPolicy
