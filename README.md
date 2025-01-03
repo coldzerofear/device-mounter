@@ -6,6 +6,13 @@ DeviceMounter is a kubernetes plugin that can dynamically add or remove device r
 
 The project is currently underway...
 
+## Project objectives
+
+* Support more types of container devices
+* Prevent device resource leakage caused by slave pods
+* Simplify the configuration of hot swappable pods
+* Support device hot plugging and vGPU expansion for vgpu-manager
+
 ## Features
 
 * Supports add or remove Device resources of running Pod without stopping or restarting
