@@ -143,7 +143,7 @@ spec:
       restartPolicy: Always
       containers:
         - name: api-server
-          image: registry.tydic.com/device-mounter/device-apiserver:latest
+          image: device-mounter/device-apiserver:latest
           imagePullPolicy: Always
           command: ["/apiserver"]
           args:

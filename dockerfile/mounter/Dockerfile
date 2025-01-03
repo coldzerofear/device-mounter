@@ -1,5 +1,5 @@
 # Build the mounter binary
-FROM registry.tydic.com/ubuntu/ubuntu:20.04 as builder
+FROM quay.io/jitesoft/ubuntu:20.04 as builder
 
 ARG TARGETARCH=amd64
 ARG TARGETOS=linux
@@ -52,7 +52,7 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
     -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/mounter cmd/mounter/main.go
 
-FROM registry.tydic.com/ubuntu/ubuntu:24.04
+FROM quay.io/jitesoft/ubuntu:24.04
 
 WORKDIR /
 

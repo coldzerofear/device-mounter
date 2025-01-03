@@ -1,8 +1,10 @@
-# K8s Device Mounter
+# Device Mounter
 
-K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove device resources running Pods.
+A hot swappable expansion component for a k8s container device.
 
-<div align="center"> <img src="docs/images/SchematicDiagram.png" alt="Schematic Diagram Of Device Dynamic Mount"  /> </div>
+DeviceMounter is a kubernetes plugin that can dynamically add or remove device resources running Pods.
+
+The project is currently underway...
 
 ## Features
 
@@ -23,7 +25,7 @@ K8s-Device-Mounter is a kubernetes plugin that can dynamically add or remove dev
 * Nvidia GPU device plugin: Support NVIDIA native device resource scheduling
 > `nvidia-container-runtime` (must be configured as default runtime)
 
-* Valcano VGPU device plugin: VGPU hot mount implementation supporting Valcano scheduler
+~~* Volcano VGPU device plugin: VGPU hot mount implementation supporting Volcano scheduler~~
 > `nvidia-container-runtime` (must be configured as default runtime)
 
 * Ascend NPU device plugin: Under development
@@ -64,7 +66,7 @@ kubectl delete -f deploy/device-mounter-daemonset.yaml
 
 Nvidia GPU Device Plugin. See [Nvidia_GPU Using Help](docs/guide/NvidiaGPU.md)
 
-Volcano vGPU Device Plugin. See [Volcano_VGPU Using Help](docs/guide/VolcanoVGPU.md)
+~~Volcano vGPU Device Plugin. See [Volcano_VGPU Using Help](docs/guide/VolcanoVGPU.md)~~
 
 Ascend NPU Device Plugin. See [Ascend_NPU Using Help](docs/guide/AscendNPU.md)
 

@@ -1,5 +1,5 @@
 # Build the mounter binary
-FROM registry.tydic.com/golang/golang:1.22 as builder
+FROM quay.io/projectquay/golang:1.22 as builder
 
 ARG BUILDVERSION
 ARG BUILDCOMMIT
@@ -36,7 +36,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  go build -a \
     -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/apiserver cmd/apiserver/main.go
 
-FROM registry.tydic.com/alpine/alpine:latest
+FROM quay.io/jitesoft/alpine:latest
 
 WORKDIR /
 

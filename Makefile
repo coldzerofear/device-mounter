@@ -18,7 +18,7 @@ $(error Unsupported architecture: $(ARCH))
 endif
 
 # Image URL to use all building/pushing image targets
-IMG_PREFIX ?= registry.tydic.com/device-mounter
+IMG_PREFIX ?= device-mounter
 TAG ?= $(DOCKER_ARCH_ARG)-latest
 
 CURRENT_VERSION ?= v1alpha1

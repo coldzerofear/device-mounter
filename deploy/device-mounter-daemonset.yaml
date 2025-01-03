@@ -86,7 +86,7 @@ spec:
       restartPolicy: Always
       containers:
         - name: mounter
-          image: registry.tydic.com/device-mounter/device-mounter:latest
+          image: device-mounter/device-mounter:latest
           imagePullPolicy: Always
           securityContext:
             privileged: true
