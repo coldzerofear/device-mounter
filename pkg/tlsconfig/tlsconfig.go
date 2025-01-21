@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"k8s-device-mounter/pkg/api/v1alpha1"
-	"k8s-device-mounter/pkg/authConfig"
-	"k8s-device-mounter/pkg/filewatch"
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/authConfig"
+	"github.com/coldzerofear/device-mounter/pkg/filewatch"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"

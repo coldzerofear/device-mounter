@@ -11,7 +11,7 @@ ENV GOPATH /go
 ENV GO111MODULE on
 ENV GOPROXY https://goproxy.cn,direct
 
-WORKDIR /go/src/k8s-device-mounter
+WORKDIR /go/src/device-mounter
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -32,15 +32,15 @@ COPY pkg/ pkg/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  go build -a \
-    -ldflags="-X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
-    -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
+    -ldflags="-X github.com/coldzerofear/device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
+    -X github.com/coldzerofear/device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/apiserver cmd/apiserver/main.go
 
 FROM quay.io/jitesoft/alpine:latest
 
 WORKDIR /
 
-COPY --from=builder /go/src/k8s-device-mounter/bin/apiserver .
+COPY --from=builder /go/src/device-mounter/bin/apiserver .
 
 USER 1000:1000
 

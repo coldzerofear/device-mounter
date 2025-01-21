@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"net/http/pprof"
 
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/authConfig"
+	"github.com/coldzerofear/device-mounter/pkg/client"
+	"github.com/coldzerofear/device-mounter/pkg/config"
+	"github.com/coldzerofear/device-mounter/pkg/filewatch"
+	"github.com/coldzerofear/device-mounter/pkg/server/apiserver"
+	"github.com/coldzerofear/device-mounter/pkg/tlsconfig"
+	"github.com/coldzerofear/device-mounter/pkg/versions"
 	"github.com/emicklei/go-restful/v3"
-	"k8s-device-mounter/pkg/api/v1alpha1"
-	"k8s-device-mounter/pkg/authConfig"
-	"k8s-device-mounter/pkg/client"
-	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/filewatch"
-	"k8s-device-mounter/pkg/server/apiserver"
-	"k8s-device-mounter/pkg/tlsconfig"
-	"k8s-device-mounter/pkg/versions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	serviceCertDir = "/tmp/k8s-device-mounter/serving-certs"
+	serviceCertDir = "/tmp/device-mounter/serving-certs"
 	certName       = "tls.crt"
 	keyName        = "tls.key"
 

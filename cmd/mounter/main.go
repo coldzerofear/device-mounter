@@ -16,19 +16,19 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/client"
+	"github.com/coldzerofear/device-mounter/pkg/config"
+	"github.com/coldzerofear/device-mounter/pkg/controller"
+	"github.com/coldzerofear/device-mounter/pkg/framework"
+	"github.com/coldzerofear/device-mounter/pkg/server/mounter"
+	"github.com/coldzerofear/device-mounter/pkg/versions"
+	"github.com/coldzerofear/device-mounter/pkg/watchdog"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"google.golang.org/grpc"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/client"
-	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/controller"
-	"k8s-device-mounter/pkg/framework"
-	"k8s-device-mounter/pkg/server/mounter"
-	"k8s-device-mounter/pkg/versions"
-	"k8s-device-mounter/pkg/watchdog"
 
 	// init device mounter
-	_ "k8s-device-mounter/pkg/devices"
+	_ "github.com/coldzerofear/device-mounter/pkg/devices"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -46,7 +46,7 @@ import (
 var (
 	version     bool
 	TCPBindPort = ":1200"
-	SocketPath  = "/var/run/k8s-device-mounter"
+	SocketPath  = "/var/run/device-mounter"
 	KubeConfig  = ""
 )
 
@@ -55,7 +55,7 @@ func initFlags() {
 	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
 	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default :1200)")
 	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
-	flag.StringVar(&SocketPath, "socket-path", SocketPath, "Specify the directory where the socket file is located (default /var/run/k8s-device-mounter)")
+	flag.StringVar(&SocketPath, "socket-path", SocketPath, "Specify the directory where the socket file is located (default /var/run/device-mounter)")
 
 	flag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container (default alpine:latest)")
 	flag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container (default IfNotPresent)")

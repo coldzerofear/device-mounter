@@ -1,4 +1,4 @@
-module k8s-device-mounter
+module github.com/coldzerofear/device-mounter
 
 go 1.22.0
 

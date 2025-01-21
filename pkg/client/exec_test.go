@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"k8s-device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/api"
 	v1 "k8s.io/api/core/v1"
 )
 

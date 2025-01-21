@@ -3,7 +3,7 @@ package fake
 import (
 	"crypto/x509"
 
-	"k8s-device-mounter/pkg/authConfig"
+	"github.com/coldzerofear/device-mounter/pkg/authConfig"
 )
 
 type FakeReader struct {

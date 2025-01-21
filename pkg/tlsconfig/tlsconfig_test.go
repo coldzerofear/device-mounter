@@ -10,15 +10,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/filewatch"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s-device-mounter/pkg/api/v1alpha1"
-	"k8s-device-mounter/pkg/filewatch"
 
 	"k8s.io/client-go/util/cert"
 	"sigs.k8s.io/yaml"
 
-	fakeAuth "k8s-device-mounter/pkg/authConfig/fake"
+	fakeAuth "github.com/coldzerofear/device-mounter/pkg/authConfig/fake"
 )
 
 var _ = Describe("TlsConfig", func() {

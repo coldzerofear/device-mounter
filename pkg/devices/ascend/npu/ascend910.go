@@ -2,7 +2,7 @@ package npu
 
 import (
 	"Ascend-device-plugin/pkg/common"
-	"k8s-device-mounter/pkg/util"
+	"github.com/coldzerofear/device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )

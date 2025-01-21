@@ -23,7 +23,7 @@ ENV GOPROXY https://goproxy.cn,direct
 ARG BUILDVERSION
 ARG BUILDCOMMIT
 
-WORKDIR /go/src/k8s-device-mounter
+WORKDIR /go/src/device-mounter
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -48,15 +48,15 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
     CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files'  \
     go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack \
-    -X k8s-device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
-    -X k8s-device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
+    -X github.com/coldzerofear/device-mounter/pkg/versions.BuildVersion=${BUILDVERSION}_linux-${TARGETARCH} \
+    -X github.com/coldzerofear/device-mounter/pkg/versions.BuildCommit=${BUILDCOMMIT}" \
     -o bin/mounter cmd/mounter/main.go
 
 FROM quay.io/jitesoft/ubuntu:24.04
 
 WORKDIR /
 
-COPY --from=builder /go/src/k8s-device-mounter/bin/mounter .
+COPY --from=builder /go/src/device-mounter/bin/mounter .
 
 COPY scripts scripts/
 RUN chmod +x scripts/*

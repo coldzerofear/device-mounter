@@ -79,8 +79,8 @@ test: fmt vet ## Run tests.
 
 .PHONY: build
 build: fmt vet ## Build binary.
-	CGO_ENABLED=0 GOOS=$(GOOS) go build -ldflags="-X k8s-device-mounter/pkg/versions.BuildVersion=${CURRENT_VERSION}_linux-${DOCKER_ARCH_ARG} -X k8s-device-mounter/pkg/versions.BuildCommit=${CURRENT_COMMIT}" -o bin/apiserver cmd/apiserver/main.go
-	CGO_ENABLED=1 GOOS=$(GOOS) CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack -X k8s-device-mounter/pkg/versions.BuildVersion=${CURRENT_VERSION}_linux-${DOCKER_ARCH_ARG} -X k8s-device-mounter/pkg/versions.BuildCommit=${CURRENT_COMMIT}" -o bin/mounter cmd/mounter/main.go
+	CGO_ENABLED=0 GOOS=$(GOOS) go build -ldflags="-X github.com/coldzerofear/device-mounter/pkg/versions.BuildVersion=${CURRENT_VERSION}_linux-${DOCKER_ARCH_ARG} -X github.com/coldzerofear/device-mounter/pkg/versions.BuildCommit=${CURRENT_COMMIT}" -o bin/apiserver cmd/apiserver/main.go
+	CGO_ENABLED=1 GOOS=$(GOOS) CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv" CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files' go build -ldflags="-extldflags=-Wl,-z,lazy,-z,relro,-z,noexecstack -X github.com/coldzerofear/device-mounter/pkg/versions.BuildVersion=${CURRENT_VERSION}_linux-${DOCKER_ARCH_ARG} -X github.com/coldzerofear/device-mounter/pkg/versions.BuildCommit=${CURRENT_COMMIT}" -o bin/mounter cmd/mounter/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

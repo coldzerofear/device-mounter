@@ -13,9 +13,9 @@ import (
 	"unsafe"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/api/v1alpha1"
-	"k8s-device-mounter/pkg/client"
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/client"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	uuid2 "k8s.io/apimachinery/pkg/util/uuid"

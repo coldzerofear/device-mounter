@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/util"
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes"

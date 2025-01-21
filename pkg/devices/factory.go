@@ -1,10 +1,10 @@
 package devices
 
 import (
-	ascend_npu "k8s-device-mounter/pkg/devices/ascend/npu"
-	nvidia_gpu "k8s-device-mounter/pkg/devices/nvidia/gpu"
-	volcano_vgpu "k8s-device-mounter/pkg/devices/volcano/vgpu"
-	"k8s-device-mounter/pkg/framework"
+	ascend_npu "github.com/coldzerofear/device-mounter/pkg/devices/ascend/npu"
+	nvidia_gpu "github.com/coldzerofear/device-mounter/pkg/devices/nvidia/gpu"
+	volcano_vgpu "github.com/coldzerofear/device-mounter/pkg/devices/volcano/vgpu"
+	"github.com/coldzerofear/device-mounter/pkg/framework"
 )
 
 // 检验是否实现接口

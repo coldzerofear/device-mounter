@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
-	"k8s-device-mounter/pkg/client"
+	"github.com/coldzerofear/device-mounter/pkg/client"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/klog/v2"
 	"k8s.io/kubelet/pkg/apis/podresources/v1alpha1"

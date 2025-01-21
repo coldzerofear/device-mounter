@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	client2 "k8s-device-mounter/pkg/client"
-	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/util"
+	client2 "github.com/coldzerofear/device-mounter/pkg/client"
+	"github.com/coldzerofear/device-mounter/pkg/config"
+	"github.com/coldzerofear/device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"

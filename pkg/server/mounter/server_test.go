@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coldzerofear/device-mounter/pkg/api"
 	"google.golang.org/grpc"
-	"k8s-device-mounter/pkg/api"
 )
 
 func TestDeviceMounterServer(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/authConfig"
 	"github.com/emicklei/go-restful/v3"
 	"google.golang.org/grpc"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/authConfig"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"

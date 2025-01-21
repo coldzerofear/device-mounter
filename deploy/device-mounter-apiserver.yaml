@@ -37,7 +37,7 @@ metadata:
   name: device-mounter-apiserver-sa
   namespace: kube-system
   labels:
-    control-plane: k8s-device-mounter-apiserver
+    control-plane: device-mounter-apiserver
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -166,7 +166,7 @@ spec:
               mountPath: /config
               readOnly: true
             - name: server-cert
-              mountPath: /tmp/k8s-device-mounter/serving-certs
+              mountPath: /tmp/device-mounter/serving-certs
               readOnly: true
           resources:
             limits:

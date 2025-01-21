@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coldzerofear/device-mounter/pkg/config"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"golang.org/x/sys/unix"
-	"k8s-device-mounter/pkg/config"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

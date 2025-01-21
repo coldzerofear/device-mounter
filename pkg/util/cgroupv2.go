@@ -13,10 +13,10 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/link"
+	ebpf2 "github.com/coldzerofear/device-mounter/pkg/util/ebpf"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"golang.org/x/sys/unix"
-	ebpf2 "k8s-device-mounter/pkg/util/ebpf"
 	"k8s.io/klog/v2"
 )
 

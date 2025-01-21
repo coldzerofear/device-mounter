@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"k8s-device-mounter/pkg/versions"
+	"github.com/coldzerofear/device-mounter/pkg/versions"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

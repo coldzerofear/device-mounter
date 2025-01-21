@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/config"
+	"github.com/coldzerofear/device-mounter/pkg/framework"
+	"github.com/coldzerofear/device-mounter/pkg/util"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/config"
-	"k8s-device-mounter/pkg/framework"
-	"k8s-device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
@@ -271,7 +271,7 @@ func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, owner
 		config.AppComponentLabelKey: config.CreateManagerBy,
 		config.AppManagedByLabelKey: config.CreateManagerBy,
 	}
-	pdb.OwnerReferences = Owner(ownerPod)
+	pdb.OwnerReferences = Owner(ownerPod, true)
 	// TODO 确保至少有1个Pod副本在任何中断期间都是可用的 (防止资源泄漏)
 	minAvailable := intstr.FromInt32(int32(1))
 	pdb.Spec.MinAvailable = &minAvailable

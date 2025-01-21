@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/framework"
 	"gomodules.xyz/jsonpatch/v2"
-	"k8s-device-mounter/pkg/api/v1alpha1"
-	"k8s-device-mounter/pkg/framework"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"

@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"Ascend-device-plugin/pkg/common"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 )
 

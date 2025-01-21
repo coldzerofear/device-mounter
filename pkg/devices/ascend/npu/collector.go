@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"Ascend-device-plugin/pkg/common"
+	"github.com/coldzerofear/device-mounter/pkg/api"
+	"github.com/coldzerofear/device-mounter/pkg/client"
 	"huawei.com/npu-exporter/v6/devmanager"
 	npuCommon "huawei.com/npu-exporter/v6/devmanager/common"
-	"k8s-device-mounter/pkg/api"
-	"k8s-device-mounter/pkg/client"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"

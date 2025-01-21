@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"k8s-device-mounter/pkg/api/v1alpha1"
+	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 	AppCreatedByLabelKey = "app.kubernetes.io/created-by"
 	AppInstanceLabelKey  = "app.kubernetes.io/instance"
 
-	CreateManagerBy = "k8s-device-mounter"
+	CreateManagerBy = "device-mounter"
 )
 
 func AnnoIsExpansion(annos map[string]string) bool {
