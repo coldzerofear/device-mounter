@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"os"
 
 	"github.com/coldzerofear/device-mounter/pkg/api/v1alpha1"
 	"github.com/coldzerofear/device-mounter/pkg/authConfig"
@@ -53,16 +54,19 @@ func initFlags() {
 	flag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service (default \":1200\")")
 	flag.StringVar(&MounterNamespace, "mounter-pod-namespace", MounterNamespace, "The namespace of the device mounter pod (default \"kube-system\")")
 	flag.StringVar(&MounterSelector, "mounter-label-selector", MounterSelector, "Specify the label selector for the device mounter pod")
+	flag.Parse()
+}
 
+func printVersionInfo() {
+	if version {
+		fmt.Printf("DeviceAPIServer version: %s \n", versions.AdjustVersion(versions.BuildVersion))
+		os.Exit(0)
+	}
 }
 
 func main() {
 	initFlags()
-	flag.Parse()
-	if version {
-		fmt.Printf("DeviceAPIServer version: %s \n", versions.AdjustVersion(versions.BuildVersion))
-		return
-	}
+	printVersionInfo()
 
 	kubeClient := client.GetKubeClient(KubeConfig)
 	authConfigReader, err := authConfig.CreateReader(kubeClient.CoreV1().RESTClient())

@@ -120,7 +120,6 @@ func NewDeviceSlavePod(ownerPod *v1.Pod, limits map[v1.ResourceName]resource.Qua
 					},
 				},
 			},
-			// TODO 提高优先级，防止资源被意外驱逐
 			// PriorityClassName: "system-cluster-critical",
 			SchedulerName:     ownerPod.Spec.SchedulerName,
 			PriorityClassName: ownerPod.Spec.PriorityClassName,
@@ -147,7 +146,6 @@ func GetDeviceFileVersionV2(deviceFile string) (uint32, uint32, devices.Type, er
 	if (info.Mode() & os.ModeCharDevice) != 0 {
 		deviceType = devices.CharDevice
 	}
-	// 类型断言，确保info.Sys()返回的是syscall.Stat_t类型
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return 0, 0, deviceType, fmt.Errorf("Error converting to syscall.Stat_t")
@@ -163,14 +161,13 @@ func GetDeviceFileVersion(deviceFile string) (uint32, uint32, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("Error getting file info: %s", err)
 	}
-	// 类型断言，确保info.Sys()返回的是syscall.Stat_t类型
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return 0, 0, fmt.Errorf("Error converting to syscall.Stat_t")
 	}
 	// 提取主设备号和次设备号
-	major := unix.Major(stat.Rdev) // 主设备号
-	minor := unix.Minor(stat.Rdev) // 次设备号
+	major := unix.Major(stat.Rdev)
+	minor := unix.Minor(stat.Rdev)
 	return major, minor, nil
 }
 

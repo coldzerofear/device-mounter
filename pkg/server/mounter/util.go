@@ -30,6 +30,7 @@ import (
 	"k8s.io/utils/pointer"
 )
 
+// CheckPodContainerStatus Check if the specified container status is normal
 func CheckPodContainerStatus(pod *v1.Pod, cont *api.Container) error {
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.Name == cont.Name {
@@ -44,6 +45,7 @@ func CheckPodContainerStatus(pod *v1.Pod, cont *api.Container) error {
 	return fmt.Errorf("The target container %s is not ready", cont.Name)
 }
 
+// CheckPodContainer Check if the target container exists in the pod.
 func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error) {
 	if pod == nil {
 		return nil, api.NewMounterError(api.ResultCode_Invalid, "The target pod is empty")
@@ -87,6 +89,7 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 	return nil, api.NewMounterError(api.ResultCode_Invalid, msg)
 }
 
+// CheckMountDeviceRequest Check if the device request is legitimate.
 func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
 	var paramNames []string
 	if len(req.GetPodName()) == 0 {
@@ -102,7 +105,7 @@ func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
 		msg := fmt.Sprintf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
 		return api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
-	// TODO 没指定要挂载的容器，默认选择index0
+	// TODO If no container to be mounted is specified, index 0 is selected by default.
 	if req.GetContainer() == nil {
 		req.Container = &api.Container{Index: 0}
 	}
@@ -134,7 +137,7 @@ func CheckUnMountDeviceRequest(req *api.UnMountDeviceRequest) error {
 	return nil
 }
 
-// TODO 暂时忽略删除失败 （设备泄漏风险）
+// GarbageCollectionPods Batch delete pods
 func GarbageCollectionPods(kubeClient *kubernetes.Clientset, objKeys []api.ObjectKey) []api.ObjectKey {
 	var (
 		err          error
@@ -164,6 +167,7 @@ func GarbageCollectionPods(kubeClient *kubernetes.Clientset, objKeys []api.Objec
 	return deleteFailed
 }
 
+// WaitSupportPodsReady Waiting for the status of the created pods to be ready.
 func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 	kubeClient *kubernetes.Clientset, deviceMounter framework.DeviceMounter,
 	slavePodKeys []api.ObjectKey) ([]*v1.Pod, []*v1.Pod, error) {
@@ -176,7 +180,9 @@ func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 			slavePod, err := podLister.Pods(slaveKey.Namespace).Get(slaveKey.Name)
 			if err != nil {
 				if apierror.IsNotFound(err) {
-					// 当本地缓存找不到则从api-server处查询
+					// When the target pod cannot be found in the cache,
+					// it may be due to data synchronization delay that the target pod cannot be found in the cache.
+					// Try to search for pod information through etcd. If none of them exist, throw an error.
 					err = retry.OnError(retry.DefaultRetry, func(err error) bool { return !apierror.IsNotFound(err) }, func() error {
 						slavePod, err = kubeClient.CoreV1().Pods(slaveKey.Namespace).Get(ctx, slaveKey.Name, metav1.GetOptions{})
 						return err
@@ -193,8 +199,7 @@ func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 				readySlavePods = append(readySlavePods, slavePod.DeepCopy())
 				continue
 			case api.Wait:
-				// 等待将进行重试
-				// 重置已有计数
+				// We will retry and reset the existing count.
 				if len(readySlavePods) > 0 {
 					readySlavePods = make([]*v1.Pod, 0)
 				}
@@ -219,7 +224,6 @@ func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 				}
 				return false, err
 			default:
-				// 抛出错误
 				return false, fmt.Errorf("The status return code of the position is incorrect: %v", statusCode)
 			}
 		}
@@ -358,7 +362,6 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 func (s *DeviceMounterImpl) GetCGroupPath(pod *v1.Pod, container *api.Container) (string, error) {
 	oldversion := false
 loop:
-	// 获取容器cgroup路径
 	cgroupPath, err := util.GetK8sPodCGroupPath(pod, container, oldversion)
 	if err != nil {
 		return "", err
@@ -440,7 +443,6 @@ func (s *DeviceMounterImpl) DeleteDeviceFiles(cfg *util.Config, devInfos []api.D
 }
 
 func (s *DeviceMounterImpl) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, error) {
-	// 获取容器cgroup路径
 	cgroupPath, err := s.GetCGroupPath(pod, container)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get cgroup path error")
@@ -475,7 +477,7 @@ func (s *DeviceMounterImpl) GetTargetPod(ctx context.Context, name, namespace st
 	if err != nil {
 		return nil, err
 	}
-	// 校验pod节点
+
 	if pod.Spec.NodeName != s.NodeName {
 		return nil, fmt.Errorf("Target pod is not running on the node %s", s.NodeName)
 	}

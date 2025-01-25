@@ -77,7 +77,8 @@ func (insts *Instructions) AppendRule(rule *devices.Rule) error {
 
 	groups := insts.groups()
 	index := -1
-	// TODO 查找已有指令，从末尾往前找，因为新指令将往末尾插入
+	// Search for existing instructions, starting from the end and moving forward,
+	// as new instructions will be inserted towards the end.
 	for i := len(groups) - 1; i >= 0; i-- {
 		var (
 			foundType  bool
@@ -203,7 +204,7 @@ func (insts *Instructions) AppendRule(rule *devices.Rule) error {
 	}
 	insert = append(insert, acceptBlock(rule.Allow)...)
 
-	// 计算指令跳转偏移
+	// calculate the instruction jump offset.
 	for i, instruction := range insert {
 		offset := len(insert) - 1 - i
 		switch instruction.OpCode {
@@ -215,25 +216,16 @@ func (insts *Instructions) AppendRule(rule *devices.Rule) error {
 		}
 	}
 
-	// TODO 当没找到已有规则，或者找到的已有规则组 包含额外的指令序列,则直接往末尾追加，尾部的将覆盖前面的指令序列
+	// If no existing rules are found, or if the existing rule group found contains additional instruction sequences,
+	// simply add new instructions to the end.
 	if index < 0 || len(groups[index]) > len(insert) {
 		klog.V(5).Infoln("insert asm.Instructions index", len(groups), insert)
 		groups = append(groups, insert)
 	} else {
-		// TODO 替换已有
 		klog.V(5).Infoln("update asm.Instructions index", index, insert)
 		groups[index] = insert
 	}
 
-	// TODO index 0 包含了其他的一些指令，直接替换将报错：load program: permission denied: 0: (55) if r2 != 0x2 goto pc+7: R2 !read_ok (1 line(s) omitted)
-	// 所以如果规则处于index 0上则直接追加，epf 字节指令规则之后的将覆盖之前的
-	//if index <= 0 {
-	//	klog.V(5).Infoln("insert asm.Instructions index", len(groups))
-	//	groups = append(groups, insert)
-	//} else {
-	//	klog.V(5).Infoln("update asm.Instructions index", index)
-	//	groups[index] = insert
-	//}
 	*insts = Instructions{}
 	for i, _ := range groups {
 		*insts = append(*insts, groups[i]...)

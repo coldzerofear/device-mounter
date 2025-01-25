@@ -59,15 +59,28 @@ func initFlags() {
 
 	flag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container (default alpine:latest)")
 	flag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container (default IfNotPresent)")
+	flag.Parse()
+}
+
+func printVersionInfo() {
+	if version {
+		fmt.Printf("DeviceMounter version: %s \n", versions.AdjustVersion(versions.BuildVersion))
+		os.Exit(0)
+	}
+}
+
+func newEventRecorder() record.EventRecorderLogger {
+	klog.Infoln("Initialize the event recorder...")
+	kubeConfig := client.GetKubeConfig(KubeConfig)
+	eventClient, _ := kubernetes.NewForConfig(kubeConfig)
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
+	return broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "DeviceMounter"})
 }
 
 func main() {
 	initFlags()
-	flag.Parse()
-	if version {
-		fmt.Printf("DeviceMounter version: %s \n", versions.AdjustVersion(versions.BuildVersion))
-		return
-	}
+	printVersionInfo()
 
 	nodeName := os.Getenv("NODE_NAME")
 	if strings.TrimSpace(nodeName) == "" {
@@ -78,7 +91,6 @@ func main() {
 	config.InitCGroupDriver()
 
 	klog.Infoln("Initialize the pod resources client...")
-	// TODO 初始化客户端
 	proxyClient := client.GetPodResourcesClinet()
 	defer proxyClient.Close()
 
@@ -91,12 +103,14 @@ func main() {
 	})
 	transform := informers.WithTransform(cache2.TransformStripManagedFields())
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, resyncConfig, transform)
-	podInformer := initPodInformer(informerFactory, nodeName)
+	podInformer := newPodInformer(informerFactory, nodeName)
 	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("pod informer watch error: %v", err)
 	})
 	podController := controller.NewPodController("PodController", podInformer)
-	_, _ = podInformer.AddEventHandler(podController)
+	if _, err := podInformer.AddEventHandler(podController); err != nil {
+		klog.Exit("AddEventHandler failed")
+	}
 	nodeInformer := informerFactory.Core().V1().Nodes().Informer()
 	_ = nodeInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("node informer watch error: %v", err)
@@ -107,25 +121,17 @@ func main() {
 	ctx, cancelFunc := context.WithCancel(context.TODO())
 	go podController.Start(ctx, 1)
 
-	klog.Infoln("Initialize the event recorder...")
-	kubeConfig := client.GetKubeConfig(KubeConfig)
-	eventClient, _ := kubernetes.NewForConfig(kubeConfig)
-	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "DeviceMounter"})
-
 	nodeLister := listerv1.NewNodeLister(nodeInformer.GetIndexer())
 	podLister := listerv1.NewPodLister(podInformer.GetIndexer())
 	serverImpl := &mounter.DeviceMounterImpl{
 		NodeName:   nodeName,
 		KubeClient: kubeClient,
-		Recorder:   recorder,
+		Recorder:   newEventRecorder(),
 		NodeLister: nodeLister,
 		PodLister:  podLister,
 		IsCGroupV2: cgroups.IsCgroup2UnifiedMode(),
 	}
 
-	// 注册设备挂载器
 	klog.Infoln("Registering Device Mounter...")
 	if err := framework.RegisrtyDeviceMounter(); err != nil {
 		klog.Exit(err.Error())
@@ -134,21 +140,19 @@ func main() {
 	klog.Infoln("Successfully registered mounts include", deviceTypes)
 
 	klog.Infoln("Watchdog Starting...")
-	kubeConfig = client.GetKubeConfig(KubeConfig)
+	kubeConfig := client.GetKubeConfig(KubeConfig)
 	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
 	nodeLabeller := watchdog.NewNodeLabeller(nodeName, nodeLister, nodeClient)
 	go nodeLabeller.Start(ctx.Done())
 
 	klog.Infoln("Service Starting...")
 
-	// TODO 启动tpc服务
 	stopCh1 := make(chan struct{}, 1)
 	s1, err := StartTcpService(serverImpl, stopCh1)
 	if err != nil {
 		klog.Exit(err.Error())
 	}
 
-	// TODO 启动unix服务
 	stopCh2 := make(chan struct{}, 1)
 	s2, err := StartUnixService(serverImpl, stopCh2)
 	if err != nil {
@@ -156,8 +160,10 @@ func main() {
 	}
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT)
+	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT,
+		syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT)
 	exitCode := 0
+	// Use service graceful stop to prevent unexpected interruption of ongoing task requests.
 	select {
 	case <-stopCh1:
 		klog.Infoln("The grpc tpc service has been shut down.")
@@ -176,13 +182,13 @@ func main() {
 		klog.Infoln("Shutting down grpc unix service...")
 		s2.GracefulStop()
 	}
-	cancelFunc() // 关闭controller
+	cancelFunc()
 	nodeLabeller.WaitForStop()
 	klog.Infoln("Service stopped, please restart the service")
 	os.Exit(exitCode)
 }
 
-func initPodInformer(factory informers.SharedInformerFactory, nodeName string) cache.SharedIndexInformer {
+func newPodInformer(factory informers.SharedInformerFactory, nodeName string) cache.SharedIndexInformer {
 	return factory.InformerFor(&v1.Pod{}, func(k kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 		return cache.NewSharedIndexInformer(
 			cache.NewListWatchFromClient(
