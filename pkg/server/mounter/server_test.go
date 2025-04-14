@@ -19,7 +19,7 @@ func TestDeviceMounterServer(t *testing.T) {
 		}
 		defer listen.Close()
 		s := grpc.NewServer()
-		api.RegisterDeviceMountServiceServer(s, &DeviceMounterImpl{})
+		api.RegisterDeviceMountServiceServer(s, &DeviceMounterServer{})
 		log.Println("Serving ...")
 		go func() {
 			if err = s.Serve(listen); err != nil {
@@ -49,7 +49,7 @@ func TestDeviceMounterUnixServer(t *testing.T) {
 			_ = os.RemoveAll(socketPath)
 		}()
 		s := grpc.NewServer()
-		api.RegisterDeviceMountServiceServer(s, &DeviceMounterImpl{})
+		api.RegisterDeviceMountServiceServer(s, &DeviceMounterServer{})
 		log.Println("Serving ...")
 		go func() {
 			if err = s.Serve(listen); err != nil {

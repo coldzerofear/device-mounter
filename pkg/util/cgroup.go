@@ -224,34 +224,6 @@ func KillRunningProcesses(config *Config, processes []int) error {
 	return nil
 }
 
-func AddDevicePermission(deviceCGroupPath string, deviceInfo api.DeviceInfo) error {
-	cmd := fmt.Sprintf("echo '%c %d:%d %s' > %s", deviceInfo.Type, deviceInfo.Major,
-		deviceInfo.Minor, deviceInfo.Permissions, deviceCGroupPath+"/devices.allow")
-	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		klog.Errorln("Exec \"" + cmd + "\" failed")
-		klog.Errorln("Output:", string(out))
-		klog.Errorln(err)
-		return err
-	} else {
-		return nil
-	}
-}
-
-func RemoveDevicePermission(deviceCGroupPath string, deviceInfo api.DeviceInfo) error {
-	cmd := fmt.Sprintf("echo '%c %d:%d %s' > %s", deviceInfo.Type, deviceInfo.Major,
-		deviceInfo.Minor, deviceInfo.Permissions, deviceCGroupPath+"/devices.deny")
-	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
-	if err != nil {
-		klog.Errorln("Exec \"" + cmd + "\" failed")
-		klog.Errorln("Output:", string(out))
-		klog.Errorln(err)
-		return err
-	} else {
-		return nil
-	}
-}
-
 func GetDeviceGroupPathV1(podCGroupPath string) string {
 	return filepath.Join("/sys/fs/cgroup/devices", podCGroupPath)
 }
@@ -298,7 +270,7 @@ func GetK8sPodCGroupPath(pod *v1.Pod, container *api.Container, oldVersion bool)
 	case config.CGROUPFS:
 		return filepath.Join(path.Join(cgroups...), containerId), nil
 	default:
-		return "", fmt.Errorf("Unknown CGroup Driver, Unable to locate cgroup directory")
+		return "", fmt.Errorf("unknown CGroup Driver, Unable to locate cgroup directory")
 	}
 }
 
@@ -362,7 +334,7 @@ func parseRuntime(podContainerId string) (runtimeName string, containerId string
 	return
 }
 
-func SetDeviceRulesV1(path string, r *configs.Resources) (func() error, error) {
+func SetDeviceRulesByCgroupv1(path string, r *configs.Resources) (func() error, error) {
 	if r.SkipDevices {
 		return NilCloser, nil
 	}
@@ -414,7 +386,7 @@ func SetDeviceRulesV1(path string, r *configs.Resources) (func() error, error) {
 				Devices:     rules,
 			}
 			// 重新将旧规则装载回去
-			_, err2 := SetDeviceRulesV1(path, res)
+			_, err2 := SetDeviceRulesByCgroupv1(path, res)
 			if err2 != nil {
 				klog.Errorln(err2)
 				return fmt.Errorf("failed to call rollback device rules: %w", err)

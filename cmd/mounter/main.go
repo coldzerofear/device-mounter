@@ -24,7 +24,6 @@ import (
 	"github.com/coldzerofear/device-mounter/pkg/server/mounter"
 	"github.com/coldzerofear/device-mounter/pkg/versions"
 	"github.com/coldzerofear/device-mounter/pkg/watchdog"
-	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"google.golang.org/grpc"
 
 	// init device mounter
@@ -123,14 +122,7 @@ func main() {
 
 	nodeLister := listerv1.NewNodeLister(nodeInformer.GetIndexer())
 	podLister := listerv1.NewPodLister(podInformer.GetIndexer())
-	serverImpl := &mounter.DeviceMounterImpl{
-		NodeName:   nodeName,
-		KubeClient: kubeClient,
-		Recorder:   newEventRecorder(),
-		NodeLister: nodeLister,
-		PodLister:  podLister,
-		IsCGroupV2: cgroups.IsCgroup2UnifiedMode(),
-	}
+	serverImpl := mounter.NewDeviceMounterServer(nodeName, kubeClient, podLister, nodeLister, newEventRecorder())
 
 	klog.Infoln("Registering Device Mounter...")
 	if err := framework.RegisrtyDeviceMounter(); err != nil {

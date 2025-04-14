@@ -20,7 +20,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func SetDeviceRulesV2(dirPath string, r *configs.Resources) (func() error, func() error, error) {
+func SetDeviceRulesByCgroupv2(dirPath string, r *configs.Resources) (func() error, func() error, error) {
 	if r.SkipDevices {
 		return NilCloser, NilCloser, nil
 	}
@@ -304,14 +304,14 @@ func haveBpfProgReplace() bool {
 			},
 		})
 		if err != nil {
-			log.Printf("checking for BPF_F_REPLACE support: ebpf.NewProgram failed: %v\n", err)
+			klog.Errorf("checking for BPF_F_REPLACE support: ebpf.NewProgram failed: %v", err)
 			return
 		}
 		defer prog.Close()
 
 		devnull, err := os.Open("/dev/null")
 		if err != nil {
-			log.Printf("\"checking for BPF_F_REPLACE support: open dummy target fd: %v\n", err)
+			klog.Errorf("checking for BPF_F_REPLACE support: open dummy target fd: %v", err)
 			return
 		}
 		defer devnull.Close()
@@ -333,7 +333,7 @@ func haveBpfProgReplace() bool {
 		}
 		// attach_flags test succeeded.
 		if !errors.Is(err, unix.EBADF) {
-			log.Printf("checking for BPF_F_REPLACE: got unexpected (not EBADF or EINVAL) error: %v\n", err)
+			klog.Errorf("checking for BPF_F_REPLACE: got unexpected (not EBADF or EINVAL) error: %v", err)
 		}
 		haveBpfProgReplaceBool = true
 	})

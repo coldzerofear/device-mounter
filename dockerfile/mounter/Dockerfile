@@ -15,10 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends g++ ca-certific
 RUN wget -nv -O - https://golang.google.cn/dl/go${GOLANG_VERSION}.${TARGETOS}-${TARGETARCH}.tar.gz \
     | tar -C /usr/local -xz
 
-ENV GOPATH /go
-ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
-ENV GO111MODULE on
-ENV GOPROXY https://goproxy.cn,direct
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
+ENV GO111MODULE=on
+ENV GOPROXY=https://goproxy.cn,direct
 
 ARG BUILDVERSION
 ARG BUILDCOMMIT
@@ -43,7 +43,8 @@ COPY pkg pkg/
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 
-RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH}  \
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    CGO_LDFLAGS="-Wl,--allow-multiple-definition" \
     CGO_CFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_CPPFLAGS="-fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fPIC -ftrapv"  \
     CGO_LDFLAGS_ALLOW='-Wl,--unresolved-symbols=ignore-in-object-files'  \
@@ -57,8 +58,5 @@ FROM quay.io/jitesoft/ubuntu:24.04
 WORKDIR /
 
 COPY --from=builder /go/src/device-mounter/bin/mounter .
-
-COPY scripts scripts/
-RUN chmod +x scripts/*
 
 ENTRYPOINT ["/mounter"]

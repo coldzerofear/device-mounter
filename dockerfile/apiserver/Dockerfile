@@ -7,9 +7,9 @@ ARG BUILDCOMMIT
 ARG TARGETARCH=amd64
 ARG TARGETOS=linux
 
-ENV GOPATH /go
-ENV GO111MODULE on
-ENV GOPROXY https://goproxy.cn,direct
+ENV GOPATH=/go
+ENV GO111MODULE=on
+ENV GOPROXY=https://goproxy.cn,direct
 
 WORKDIR /go/src/device-mounter
 

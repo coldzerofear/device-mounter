@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // CheckPodContainerStatus Check if the specified container status is normal
@@ -42,7 +43,7 @@ func CheckPodContainerStatus(pod *v1.Pod, cont *api.Container) error {
 			}
 		}
 	}
-	return fmt.Errorf("The target container %s is not ready", cont.Name)
+	return fmt.Errorf("the target container %s is not ready", cont.Name)
 }
 
 // CheckPodContainer Check if the target container exists in the pod.
@@ -85,7 +86,7 @@ func CheckPodContainer(pod *v1.Pod, cont *api.Container) (*api.Container, error)
 			return ctr, nil
 		}
 	}
-	msg := fmt.Sprintf("Target container %v not found", cont)
+	msg := fmt.Sprintf("target container %v not found", cont)
 	return nil, api.NewMounterError(api.ResultCode_Invalid, msg)
 }
 
@@ -102,7 +103,7 @@ func CheckMountDeviceRequest(req *api.MountDeviceRequest) error {
 		paramNames = append(paramNames, "'resources'")
 	}
 	if len(paramNames) > 0 {
-		msg := fmt.Sprintf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		msg := fmt.Sprintf("parameters [%s] cannot be empty", strings.Join(paramNames, ","))
 		return api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
 	// TODO If no container to be mounted is specified, index 0 is selected by default.
@@ -127,7 +128,7 @@ func CheckUnMountDeviceRequest(req *api.UnMountDeviceRequest) error {
 		paramNames = append(paramNames, "'pod_namespace'")
 	}
 	if len(paramNames) > 0 {
-		msg := fmt.Sprintf("Parameters %s cannot be empty", strings.Join(paramNames, ","))
+		msg := fmt.Sprintf("parameters [%s] cannot be empty", strings.Join(paramNames, ","))
 		return api.NewMounterError(api.ResultCode_Invalid, msg)
 	}
 	// TODO 没指定要卸载的容器，默认选择index0
@@ -213,18 +214,18 @@ func WaitSupportPodsReady(ctx context.Context, podLister listerv1.PodLister,
 				continue
 			case api.Unschedulable:
 				if err == nil {
-					err = fmt.Errorf("Slave Pod %s is not schedulable", slaveKey.String())
+					err = fmt.Errorf("slave pod <%s> is not schedulable", slaveKey.String())
 				}
 				return true, err
 			case api.Fail:
 				if err == nil {
-					err = fmt.Errorf("Failed to verify slave pod %s status", slaveKey.String())
+					err = fmt.Errorf("failed to verify slave pod <%s> status", slaveKey.String())
 				} else if _, ok := err.(*api.MounterError); !ok {
-					err = fmt.Errorf("Failed to verify slave pod %s status: %v", slaveKey.String(), err)
+					err = fmt.Errorf("failed to verify slave pod <%s> status: %v", slaveKey.String(), err)
 				}
 				return false, err
 			default:
-				return false, fmt.Errorf("The status return code of the position is incorrect: %v", statusCode)
+				return false, fmt.Errorf("the status return code of the position is incorrect: %v", statusCode)
 			}
 		}
 		return true, nil
@@ -246,13 +247,13 @@ func Owner(pod *v1.Pod, controller bool) []metav1.OwnerReference {
 	}
 }
 
-func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, container *api.Container) ([]*v1.Pod, error) {
+func (s *DeviceMounterServer) GetSlavePods(devType string, ownerPod *v1.Pod, container *api.Container) ([]*v1.Pod, error) {
 	selector := labels.SelectorFromSet(labels.Set{
 		config.OwnerNameLabelKey:      ownerPod.Name,
 		config.OwnerUidLabelKey:       string(ownerPod.UID),
 		config.MountContainerLabelKey: container.Name,
 	})
-	pods, err := s.PodLister.Pods(ownerPod.Namespace).List(selector)
+	pods, err := s.podLister.Pods(ownerPod.Namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +268,7 @@ func (s *DeviceMounterImpl) GetSlavePods(devType string, ownerPod *v1.Pod, conta
 	return slavePods, nil
 }
 
-func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, ownerPod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
+func (s *DeviceMounterServer) CreatePodDisruptionBudget(ctx context.Context, ownerPod *v1.Pod) (*policyv1.PodDisruptionBudget, error) {
 	pdb := policyv1.PodDisruptionBudget{}
 	pdb.Name = ownerPod.Name
 	pdb.Namespace = ownerPod.Namespace
@@ -284,10 +285,10 @@ func (s *DeviceMounterImpl) CreatePodDisruptionBudget(ctx context.Context, owner
 			config.CreatedByLabelKey: ownerPod.Labels[config.CreatedByLabelKey],
 		},
 	}
-	return s.KubeClient.PolicyV1().PodDisruptionBudgets(ownerPod.Namespace).Create(ctx, &pdb, metav1.CreateOptions{})
+	return s.kubeClient.PolicyV1().PodDisruptionBudgets(ownerPod.Namespace).Create(ctx, &pdb, metav1.CreateOptions{})
 }
 
-func (s *DeviceMounterImpl) PatchPod(pod *v1.Pod, patches []string) (*v1.Pod, error) {
+func (s *DeviceMounterServer) PatchPod(pod *v1.Pod, patches []string) (*v1.Pod, error) {
 	if len(patches) == 0 {
 		return pod, nil
 	}
@@ -299,22 +300,24 @@ func (s *DeviceMounterImpl) PatchPod(pod *v1.Pod, patches []string) (*v1.Pod, er
 	jsonPatch := "[\n" + strings.Join(patches, ",\n") + "\n]"
 	patch, err := jsonpatch.DecodePatch([]byte(jsonPatch))
 	if err != nil {
-		return pod, fmt.Errorf("Cannot decode pod patches %s: %v", jsonPatch, err)
+		return pod, fmt.Errorf("cannot decode pod patches %s: %v", jsonPatch, err)
 	}
 	modifiedMarshalledPod, err := patch.Apply(marshalledPod)
 	if err != nil {
-		return pod, fmt.Errorf("Failed to apply patch for Pod %s: %v", jsonPatch, err)
+		return pod, fmt.Errorf("failed to apply patch for Pod %s: %v", jsonPatch, err)
 	}
 	patchedPod := &v1.Pod{}
 	err = json.Unmarshal(modifiedMarshalledPod, patchedPod)
 	if err != nil {
-		return patchedPod, fmt.Errorf("Cannot unmarshal modified marshalled Pod %s: %v", string(modifiedMarshalledPod), err)
+		return patchedPod, fmt.Errorf("cannot unmarshal modified marshalled Pod %s: %v",
+			string(modifiedMarshalledPod), err)
 	}
-	klog.V(4).Infof("Patching target pod completed. Modified pod: %s", string(modifiedMarshalledPod))
+	klog.V(4).Infof("Patching target pod completed. Modified pod: %s",
+		string(modifiedMarshalledPod))
 	return patchedPod, nil
 }
 
-func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Container, ownerPod, mutaPod *v1.Pod) {
+func (s *DeviceMounterServer) MutationPodFunc(devType string, container *api.Container, ownerPod, mutaPod *v1.Pod) {
 	if mutaPod.Labels == nil {
 		mutaPod.Labels = make(map[string]string)
 	}
@@ -338,7 +341,7 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 	mutaPod.Annotations[config.DeviceTypeAnnotationKey] = devType
 	mutaPod.Annotations[config.ContainerIdAnnotationKey] = getContainerId()
 
-	mutaPod.Spec.NodeSelector[v1.LabelHostname] = s.NodeName
+	mutaPod.Spec.NodeSelector[v1.LabelHostname] = s.nodeName
 
 	mutaPod.Labels[config.CreatedByLabelKey] = uuid.New().String()
 	mutaPod.Labels[config.OwnerNameLabelKey] = ownerPod.Name
@@ -359,14 +362,14 @@ func (s *DeviceMounterImpl) MutationPodFunc(devType string, container *api.Conta
 	mutaPod.Spec.TerminationGracePeriodSeconds = pointer.Int64(0)
 }
 
-func (s *DeviceMounterImpl) GetCGroupPath(pod *v1.Pod, container *api.Container) (string, error) {
+func (s *DeviceMounterServer) GetCGroupPath(pod *v1.Pod, container *api.Container) (string, error) {
 	oldversion := false
 loop:
 	cgroupPath, err := util.GetK8sPodCGroupPath(pod, container, oldversion)
 	if err != nil {
 		return "", err
 	}
-	if s.IsCGroupV2 {
+	if cgroups.IsCgroup2UnifiedMode() {
 		cgroupPath = util.GetGroupPathV2(cgroupPath)
 	} else {
 		cgroupPath = util.GetDeviceGroupPathV1(cgroupPath)
@@ -377,28 +380,27 @@ loop:
 			oldversion = true
 			goto loop
 		}
-		return "", fmt.Errorf("The container cgroup path does not exist: %s", cgroupPath)
+		return "", fmt.Errorf("the container cgroup path does not exist: %s", cgroupPath)
 	}
 	return cgroupPath, nil
 }
 
-func (s *DeviceMounterImpl) DeviceRuleSetFunc(cgroupPath string, r *configs.Resources) (closed func() error, rollback func() error, err error) {
+func (s *DeviceMounterServer) DeviceRuleSetFunc(cgroupPath string, r *configs.Resources) (closed func() error, rollback func() error, err error) {
+	closed = util.NilCloser
+	rollback = util.NilCloser
 	switch {
 	case len(r.Devices) == 0:
-		klog.V(3).Infoln("No device information to be mounted, skipping device permission settings")
-		closed = util.NilCloser
-		rollback = util.NilCloser
-	case s.IsCGroupV2:
-		klog.V(3).Infoln("Use cgroupv2 ebpf device controller")
-		closed, rollback, err = util.SetDeviceRulesV2(cgroupPath, r)
+		klog.V(3).Infoln("no device information to be mounted, skipping device permission settings")
+	case cgroups.IsCgroup2UnifiedMode():
+		klog.V(3).Infoln("use cgroupv2 ebpf device controller")
+		closed, rollback, err = util.SetDeviceRulesByCgroupv2(cgroupPath, r)
 	default:
-		closed = util.NilCloser
-		rollback, err = util.SetDeviceRulesV1(cgroupPath, r)
+		rollback, err = util.SetDeviceRulesByCgroupv1(cgroupPath, r)
 	}
 	return
 }
 
-func (s *DeviceMounterImpl) CreateDeviceFiles(cfg *util.Config, devInfos []api.DeviceInfo) (func() error, error) {
+func (s *DeviceMounterServer) CreateDeviceFiles(cfg *util.Config, devInfos []api.DeviceInfo) (func() error, error) {
 	if cfg == nil {
 		return util.NilCloser, fmt.Errorf("nsenter config cannot be empty")
 	}
@@ -420,7 +422,7 @@ func (s *DeviceMounterImpl) CreateDeviceFiles(cfg *util.Config, devInfos []api.D
 	return rollback, nil
 }
 
-func (s *DeviceMounterImpl) DeleteDeviceFiles(cfg *util.Config, devInfos []api.DeviceInfo) (func() error, error) {
+func (s *DeviceMounterServer) DeleteDeviceFiles(cfg *util.Config, devInfos []api.DeviceInfo) (func() error, error) {
 	if cfg == nil {
 		return util.NilCloser, fmt.Errorf("nsenter config cannot be empty")
 	}
@@ -442,34 +444,34 @@ func (s *DeviceMounterImpl) DeleteDeviceFiles(cfg *util.Config, devInfos []api.D
 	return rollback, nil
 }
 
-func (s *DeviceMounterImpl) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, error) {
+func (s *DeviceMounterServer) GetContainerCGroupPathAndPids(pod *v1.Pod, container *api.Container) ([]int, string, error) {
 	cgroupPath, err := s.GetCGroupPath(pod, container)
 	if err != nil {
-		klog.V(4).ErrorS(err, "Get cgroup path error")
+		klog.V(4).ErrorS(err, "get cgroup path error")
 		return nil, cgroupPath, err
 	}
 	klog.V(4).Infoln("current container cgroup path", cgroupPath)
 	pids, err := cgroups.GetAllPids(cgroupPath)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get container pids error")
-		return pids, cgroupPath, fmt.Errorf("Error in obtaining container process id: %v", err)
+		return pids, cgroupPath, fmt.Errorf("error in obtaining container process id: %v", err)
 	}
 	if len(pids) == 0 {
-		return pids, cgroupPath, fmt.Errorf("Process ID for target container not found")
+		return pids, cgroupPath, fmt.Errorf("process id for target container not found")
 	}
 	return pids, cgroupPath, nil
 }
 
-func (s *DeviceMounterImpl) GetTargetPod(ctx context.Context, name, namespace string) (*v1.Pod, error) {
+func (s *DeviceMounterServer) GetTargetPod(ctx context.Context, name, namespace string) (*v1.Pod, error) {
 	var (
 		pod *v1.Pod
 		err error
 	)
 
 	err = retry.OnError(retry.DefaultRetry, func(err error) bool {
-		return !apierror.IsNotFound(err) // 错误不为 not found 时重试
+		return !apierror.IsNotFound(err)
 	}, func() error {
-		pod, err = s.KubeClient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{
+		pod, err = s.kubeClient.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{
 			ResourceVersion: "0",
 		})
 		return err
@@ -478,9 +480,9 @@ func (s *DeviceMounterImpl) GetTargetPod(ctx context.Context, name, namespace st
 		return nil, err
 	}
 
-	if pod.Spec.NodeName != s.NodeName {
-		return nil, fmt.Errorf("Target pod is not running on the node %s", s.NodeName)
+	if pod.Spec.NodeName != s.nodeName {
+		return nil, fmt.Errorf("target pod is not running on the node <%s>", s.nodeName)
 	}
-	klog.V(3).InfoS("Get pod success", "name", name, "namespace", namespace)
+	klog.V(3).InfoS("Get target pod success", "pod", client.ObjectKeyFromObject(pod).String())
 	return pod, nil
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func Test_PatchPod(t *testing.T) {
-	mounterImpl := DeviceMounterImpl{}
+	mounterImpl := DeviceMounterServer{}
 	tests := []struct {
 		name    string
 		pod     *v1.Pod

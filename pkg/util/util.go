@@ -1,11 +1,8 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -16,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog/v2"
 )
 
 func IsSidecar(container v1.Container) bool {
@@ -138,17 +134,17 @@ func GetDeviceFileVersionV2(deviceFile string) (uint32, uint32, devices.Type, er
 	deviceType := devices.BlockDevice
 	info, err := os.Stat(deviceFile)
 	if err != nil {
-		return 0, 0, deviceType, fmt.Errorf("Error getting file info: %s", err)
+		return 0, 0, deviceType, fmt.Errorf("error getting file info: %s", err)
 	}
 	if (info.Mode() & os.ModeDevice) == 0 {
-		return 0, 0, deviceType, fmt.Errorf("%s Not a device file", deviceFile)
+		return 0, 0, deviceType, fmt.Errorf("%s not a device file", deviceFile)
 	}
 	if (info.Mode() & os.ModeCharDevice) != 0 {
 		deviceType = devices.CharDevice
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return 0, 0, deviceType, fmt.Errorf("Error converting to syscall.Stat_t")
+		return 0, 0, deviceType, fmt.Errorf("error converting to syscall.Stat_t")
 	}
 	// 提取主设备号和次设备号
 	major := unix.Major(stat.Rdev) // 主设备号
@@ -163,29 +159,10 @@ func GetDeviceFileVersion(deviceFile string) (uint32, uint32, error) {
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return 0, 0, fmt.Errorf("Error converting to syscall.Stat_t")
+		return 0, 0, fmt.Errorf("error converting to syscall.Stat_t")
 	}
 	// 提取主设备号和次设备号
 	major := unix.Major(stat.Rdev)
 	minor := unix.Minor(stat.Rdev)
 	return major, minor, nil
-}
-
-func ExecDynamicBindVolume(containerPid int, hostPath, containerPath string) error {
-	scriptFile := "/scripts/dynamic_bind_volume.sh"
-	if env, ok := os.LookupEnv("DYNAMIC_BIND_VOLUME_SCRIPT"); ok {
-		scriptFile = env
-	}
-	cmd := exec.Command(scriptFile, strconv.Itoa(containerPid), hostPath, containerPath)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		klog.Errorln("Failed to perform dynamic volume binding:", cmd)
-		klog.Errorln("Std Output:", stdout)
-		klog.Errorln("Err Output:", stderr)
-		return err
-	}
-	return nil
 }
