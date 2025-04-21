@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 )
@@ -28,33 +29,31 @@ const (
 	KubeletConfigPath = "/var/lib/kubelet/config.yaml"
 )
 
-func InitCGroupDriver() {
+type kubeletConfig struct {
+	CgroupDriver string `yaml:"cgroupDriver"`
+}
+
+func InitializeCGroupDriver(cgroupDriver string) {
 	initCGroupOnce.Do(func() {
-		driver := os.Getenv("CGROUP_DRIVER")
-		switch strings.ToLower(driver) {
+		switch strings.ToLower(cgroupDriver) {
 		case string(SYSTEMD):
 			CurrentCGroupDriver = SYSTEMD
 		case string(CGROUPFS):
 			CurrentCGroupDriver = CGROUPFS
 		default:
-			kubeletConfig, err := os.ReadFile(KubeletConfigPath)
+			configBytes, err := os.ReadFile(KubeletConfigPath)
 			if err != nil {
-				klog.Exitf("load kubelet config %s failed: %s", KubeletConfigPath, err.Error())
+				klog.Exitf("Read kubelet config file <%s> failed: %s", KubeletConfigPath, err.Error())
 			}
-			content := strings.ToLower(string(kubeletConfig))
-			pos := strings.LastIndex(content, "cgroupdriver:")
-			if pos < 0 {
-				klog.Exitf("Unable to find cgroup driver in kubeletConfig file")
+			var kubelet kubeletConfig
+			if err = yaml.Unmarshal(configBytes, &kubelet); err != nil {
+				klog.Exitf("Failed to unmarshal kubelet config: %s", err.Error())
 			}
-			if strings.Contains(content, string(SYSTEMD)) {
-				CurrentCGroupDriver = SYSTEMD
-				return
+			CurrentCGroupDriver = CGroupDriver(kubelet.CgroupDriver)
+			if CurrentCGroupDriver != SYSTEMD && CurrentCGroupDriver != CGROUPFS {
+				klog.Exitf("Invalid CGroup driver in kubelet config: %s", CurrentCGroupDriver)
 			}
-			if strings.Contains(content, string(CGROUPFS)) {
-				CurrentCGroupDriver = CGROUPFS
-				return
-			}
-			klog.Exitf("Unable to find cgroup driver in kubeletConfig file")
 		}
 	})
+	klog.Infof("Current CGroup driver is %s", CurrentCGroupDriver)
 }

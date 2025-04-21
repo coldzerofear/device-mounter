@@ -35,7 +35,10 @@ func WriteToPod(ctx context.Context, kubeclient *kubernetes.Clientset,
 			Stderr:    true,
 			TTY:       false,
 		}, scheme.ParameterCodec)
-	config := GetKubeConfig(kubeConfigPath)
+	config, err := GetKubeConfig()
+	if err != nil {
+		return "", "", err
+	}
 	executor, err := remotecommand.
 		NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
@@ -77,7 +80,10 @@ func ExecCmdToPod(ctx context.Context, kubeclient *kubernetes.Clientset,
 			Stderr:    true,
 			TTY:       false,
 		}, scheme.ParameterCodec)
-	config := GetKubeConfig(kubeConfigPath)
+	config, err := GetKubeConfig()
+	if err != nil {
+		return "", "", err
+	}
 	executor, err := remotecommand.
 		NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
@@ -103,7 +109,10 @@ func ExecCmdToPod(ctx context.Context, kubeclient *kubernetes.Clientset,
 
 func CopyToPod(kubeclient *kubernetes.Clientset, pod *v1.Pod,
 	ctr *api.Container, src, dst string) (string, string, error) {
-	kubeconfig := GetKubeConfig(kubeConfigPath)
+	kubeconfig, err := GetKubeConfig()
+	if err != nil {
+		return "", "", err
+	}
 	kubeconfig.APIPath = "/api"
 	// this targets the core api groups so the url path will be /api/v1
 	kubeconfig.GroupVersion = &schema.GroupVersion{Version: "v1"}

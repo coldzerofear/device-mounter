@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/pflag"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -43,22 +44,32 @@ import (
 )
 
 var (
-	version     bool
-	TCPBindPort = ":1200"
-	SocketPath  = "/var/run/device-mounter"
-	KubeConfig  = ""
+	version      bool
+	TCPBindPort  = ":1200"
+	SocketPath   = "/var/run/device-mounter"
+	KubeConfig   = ""
+	MasterURL    = ""
+	KubeQPS      = 20.0
+	KubeBurst    = 30
+	NodeName     = os.Getenv("NODE_NAME")
+	CGroupDriver = os.Getenv("CGROUP_DRIVER")
 )
 
-func initFlags() {
-	klog.InitFlags(nil)
-	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
-	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default :1200)")
-	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
-	flag.StringVar(&SocketPath, "socket-path", SocketPath, "Specify the directory where the socket file is located (default /var/run/device-mounter)")
-
-	flag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container (default alpine:latest)")
-	flag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container (default IfNotPresent)")
-	flag.Parse()
+func initFlags(fs *flag.FlagSet) {
+	pflag.CommandLine.SortFlags = false
+	pflag.StringVar(&KubeConfig, "kubeconfig", KubeConfig, "Path to a kubeconfig. Only required if out-of-cluster.")
+	pflag.StringVar(&MasterURL, "master", MasterURL, "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+	pflag.Float64Var(&KubeQPS, "kube-api-qps", KubeQPS, "QPS to use while talking with kubernetes apiserver.")
+	pflag.IntVar(&KubeBurst, "kube-api-burst", KubeBurst, "Burst to use while talking with kubernetes apiserver.")
+	pflag.StringVar(&NodeName, "node-name", NodeName, "If non-empty, will use this string as identification instead of the actual node name.")
+	pflag.StringVar(&CGroupDriver, "cgroup-driver", CGroupDriver, "Specify the cgroup driver used. (supported values: \"cgroupfs\" | \"system\")")
+	pflag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service.")
+	pflag.StringVar(&SocketPath, "socket-path", SocketPath, "Specify the directory where the socket file is located.")
+	pflag.StringVar(&config.DeviceSlaveContainerImageTag, "device-slave-image-tag", config.DeviceSlaveContainerImageTag, "Specify the image tag for the slave container.")
+	pflag.StringVar((*string)(&config.DeviceSlaveImagePullPolicy), "device-slave-pull-policy", string(config.DeviceSlaveImagePullPolicy), "Specify the image pull policy for the slave container.")
+	pflag.BoolVar(&version, "version", false, "Print version information and quit.")
+	pflag.CommandLine.AddGoFlagSet(fs)
+	pflag.Parse()
 }
 
 func printVersionInfo() {
@@ -68,33 +79,41 @@ func printVersionInfo() {
 	}
 }
 
-func newEventRecorder() record.EventRecorderLogger {
+func newEventRecorder(kubeClient *kubernetes.Clientset) record.EventRecorderLogger {
 	klog.Infoln("Initialize the event recorder...")
-	kubeConfig := client.GetKubeConfig(KubeConfig)
-	eventClient, _ := kubernetes.NewForConfig(kubeConfig)
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	return broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "DeviceMounter"})
 }
 
 func main() {
-	initFlags()
+	klog.InitFlags(flag.CommandLine)
+	initFlags(flag.CommandLine)
 	printVersionInfo()
+	defer klog.Flush()
 
-	nodeName := os.Getenv("NODE_NAME")
-	if strings.TrimSpace(nodeName) == "" {
+	if strings.TrimSpace(NodeName) == "" {
 		klog.Exit("Unknown node name, please configure environment variables [NODE_NAME]")
 	}
 
 	klog.Infoln("Initialize CGroup driver...")
-	config.InitCGroupDriver()
+	config.InitializeCGroupDriver(CGroupDriver)
 
 	klog.Infoln("Initialize the pod resources client...")
 	proxyClient := client.GetPodResourcesClinet()
 	defer proxyClient.Close()
 
 	klog.Infoln("Initialize the kube client...")
-	kubeClient := client.GetKubeClient(KubeConfig)
+	if err := client.InitKubeConfig(MasterURL, KubeConfig); err != nil {
+		klog.Fatalf("Initialization of k8s client configuration failed: %v", err)
+	}
+	kubeClient, err := client.GetClientSet(
+		client.WithQPS(float32(KubeQPS), KubeBurst),
+		client.WithDefaultUserAgent(),
+		client.WithDefaultContentType())
+	if err != nil {
+		klog.Fatalf("Create k8s kubeClient failed: %v", err)
+	}
 
 	klog.Infoln("Initialize the informer factory...")
 	resyncConfig := informers.WithCustomResyncConfig(map[metav1.Object]time.Duration{
@@ -102,11 +121,11 @@ func main() {
 	})
 	transform := informers.WithTransform(cache2.TransformStripManagedFields())
 	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, resyncConfig, transform)
-	podInformer := newPodInformer(informerFactory, nodeName)
+	podInformer := newPodInformer(informerFactory, NodeName)
 	_ = podInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		klog.Errorf("pod informer watch error: %v", err)
 	})
-	podController := controller.NewPodController("PodController", podInformer)
+	podController := controller.NewPodController("PodController", kubeClient, podInformer)
 	if _, err := podInformer.AddEventHandler(podController); err != nil {
 		klog.Exit("AddEventHandler failed")
 	}
@@ -122,7 +141,8 @@ func main() {
 
 	nodeLister := listerv1.NewNodeLister(nodeInformer.GetIndexer())
 	podLister := listerv1.NewPodLister(podInformer.GetIndexer())
-	serverImpl := mounter.NewDeviceMounterServer(nodeName, kubeClient, podLister, nodeLister, newEventRecorder())
+	serverImpl := mounter.NewDeviceMounterServer(NodeName, kubeClient,
+		podLister, nodeLister, newEventRecorder(kubeClient))
 
 	klog.Infoln("Registering Device Mounter...")
 	if err := framework.RegisrtyDeviceMounter(); err != nil {
@@ -132,9 +152,7 @@ func main() {
 	klog.Infoln("Successfully registered mounts include", deviceTypes)
 
 	klog.Infoln("Watchdog Starting...")
-	kubeConfig := client.GetKubeConfig(KubeConfig)
-	nodeClient, _ := kubernetes.NewForConfig(kubeConfig)
-	nodeLabeller := watchdog.NewNodeLabeller(nodeName, nodeLister, nodeClient)
+	nodeLabeller := watchdog.NewNodeLabeller(NodeName, nodeLister, kubeClient)
 	go nodeLabeller.Start(ctx.Done())
 
 	klog.Infoln("Service Starting...")

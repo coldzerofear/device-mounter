@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	client2 "github.com/coldzerofear/device-mounter/pkg/client"
 	"github.com/coldzerofear/device-mounter/pkg/config"
 	"github.com/coldzerofear/device-mounter/pkg/util"
 	v1 "k8s.io/api/core/v1"
@@ -35,9 +34,7 @@ type slavePodController struct {
 
 var _ cache.ResourceEventHandler = &slavePodController{}
 
-func NewPodController(name string, podInformer cache.SharedIndexInformer) *slavePodController {
-	kubeConfig := client2.GetKubeConfig("")
-	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
+func NewPodController(name string, kubeClient *kubernetes.Clientset, podInformer cache.SharedIndexInformer) *slavePodController {
 	return &slavePodController{
 		name:             name,
 		client:           kubeClient,

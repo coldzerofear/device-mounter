@@ -17,6 +17,7 @@ import (
 	"github.com/coldzerofear/device-mounter/pkg/tlsconfig"
 	"github.com/coldzerofear/device-mounter/pkg/versions"
 	"github.com/emicklei/go-restful/v3"
+	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -38,23 +39,29 @@ var (
 	debug            bool
 	version          bool
 	KubeConfig       = ""
+	MasterURL        = ""
+	KubeQPS          = 20.0
+	KubeBurst        = 30
 	TCPBindPort      = ":8768"
 	MounterBindPort  = ":1200"
 	MounterNamespace = "kube-system"
 	MounterSelector  = ""
 )
 
-func initFlags() {
-	klog.InitFlags(nil)
-	flag.BoolVar(&debug, "debug", false, "Enable pprof endpoint (default false)")
-	flag.BoolVar(&version, "version", false, "If true,query the version of the program (default false)")
-	flag.StringVar(&KubeConfig, "kube-config", KubeConfig, "Load kubeconfig file location")
-	flag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service (default \":8768\")")
-
-	flag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service (default \":1200\")")
-	flag.StringVar(&MounterNamespace, "mounter-pod-namespace", MounterNamespace, "The namespace of the device mounter pod (default \"kube-system\")")
-	flag.StringVar(&MounterSelector, "mounter-label-selector", MounterSelector, "Specify the label selector for the device mounter pod")
-	flag.Parse()
+func initFlags(fs *flag.FlagSet) {
+	pflag.CommandLine.SortFlags = false
+	pflag.StringVar(&KubeConfig, "kubeconfig", KubeConfig, "Path to a kubeconfig. Only required if out-of-cluster.")
+	pflag.StringVar(&MasterURL, "master", MasterURL, "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+	pflag.Float64Var(&KubeQPS, "kube-api-qps", KubeQPS, "QPS to use while talking with kubernetes apiserver.")
+	pflag.IntVar(&KubeBurst, "kube-api-burst", KubeBurst, "Burst to use while talking with kubernetes apiserver.")
+	pflag.StringVar(&TCPBindPort, "tcp-bind-address", TCPBindPort, "TCP port bound to GRPC service")
+	pflag.StringVar(&MounterBindPort, "mounter-bind-address", MounterBindPort, "Device Mounter TCP port bound to GRPC service")
+	pflag.StringVar(&MounterNamespace, "mounter-pod-namespace", MounterNamespace, "The namespace of the device mounter pod")
+	pflag.StringVar(&MounterSelector, "mounter-label-selector", MounterSelector, "Specify the label selector for the device mounter pod")
+	pflag.BoolVar(&debug, "debug", false, "Enable pprof endpoint")
+	pflag.BoolVar(&version, "version", false, "Print version information and quit.")
+	pflag.CommandLine.AddGoFlagSet(fs)
+	pflag.Parse()
 }
 
 func printVersionInfo() {
@@ -65,10 +72,24 @@ func printVersionInfo() {
 }
 
 func main() {
-	initFlags()
+	klog.InitFlags(flag.CommandLine)
+	initFlags(flag.CommandLine)
 	printVersionInfo()
+	defer klog.Flush()
 
-	kubeClient := client.GetKubeClient(KubeConfig)
+	klog.Infoln("Initialize the kube client...")
+	if err := client.InitKubeConfig(MasterURL, KubeConfig); err != nil {
+		klog.Fatalf("Initialization of k8s client configuration failed: %v", err)
+	}
+	kubeClient, err := client.GetClientSet(
+		client.WithQPS(float32(KubeQPS), KubeBurst),
+		client.WithDefaultUserAgent(),
+		client.WithDefaultContentType())
+	if err != nil {
+		klog.Fatalf("Create k8s kubeClient failed: %v", err)
+	}
+
+	klog.Infoln("Initialize the auth config reader...")
 	authConfigReader, err := authConfig.CreateReader(kubeClient.CoreV1().RESTClient())
 	if err != nil {
 		klog.Exitln(err)

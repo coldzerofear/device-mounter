@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/coldzerofear/device-mounter/pkg/api"
-	"github.com/coldzerofear/device-mounter/pkg/client"
 	"github.com/coldzerofear/device-mounter/pkg/framework"
 	"github.com/coldzerofear/device-mounter/pkg/util"
 	"github.com/opencontainers/runc/libcontainer/configs"
@@ -120,10 +119,7 @@ func (s *DeviceMounterServer) MountDevice(ctx context.Context, req *api.MountDev
 	}
 
 	node = node.DeepCopy()
-	kubeConfig := client.GetKubeConfig("")
-	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
-
-	err = deviceMounter.ValidateMountRequest(ctx, kubeClient, node, pod,
+	err = deviceMounter.ValidateMountRequest(ctx, s.kubeClient, node, pod,
 		container, resources, req.GetAnnotations(), req.GetLabels())
 	if err != nil {
 		klog.V(3).ErrorS(err, "validate mount request failed")
@@ -222,7 +218,7 @@ func (s *DeviceMounterServer) MountDevice(ctx context.Context, req *api.MountDev
 
 	// Get device mounting list information.
 	var deviceInfos []api.DeviceInfo
-	deviceInfos, err = deviceMounter.GetDeviceInfosToMount(ctx, kubeClient, pod, container, readyPods)
+	deviceInfos, err = deviceMounter.GetDeviceInfosToMount(ctx, s.kubeClient, pod, container, readyPods)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get mount device info error")
 		if _, ok = err.(*api.MounterError); !ok {
@@ -264,7 +260,7 @@ func (s *DeviceMounterServer) MountDevice(ctx context.Context, req *api.MountDev
 		return
 	}
 
-	err = deviceMounter.ExecutePostMountActions(ctx, kubeClient, *config, pod, container, readyPods)
+	err = deviceMounter.ExecutePostMountActions(ctx, s.kubeClient, *config, pod, container, readyPods)
 	if err != nil {
 		klog.Warningf("execute post mount actions error: %v", err)
 		if _, ok = err.(*api.MounterError); !ok {
@@ -358,11 +354,9 @@ func (s *DeviceMounterServer) UnMountDevice(ctx context.Context, req *api.UnMoun
 		err = api.NewMounterError(api.ResultCode_NotFound, msg)
 		return
 	}
-	kubeConfig := client.GetKubeConfig("")
-	kubeClient, _ := kubernetes.NewForConfig(kubeConfig)
 
 	// Retrieve the list of device information to be uninstalled.
-	deviceInfos, err := deviceMounter.GetDeviceInfosToUnmount(ctx, kubeClient, pod, container, slavePods)
+	deviceInfos, err := deviceMounter.GetDeviceInfosToUnmount(ctx, s.kubeClient, pod, container, slavePods)
 	if err != nil {
 		klog.V(4).ErrorS(err, "Get unmount device info error")
 		if _, ok = err.(*api.MounterError); !ok {
@@ -449,7 +443,7 @@ func (s *DeviceMounterServer) UnMountDevice(ctx context.Context, req *api.UnMoun
 		err = fmt.Errorf("failed to delete devic files: %v", err)
 		return
 	}
-	err = deviceMounter.ExecutePostUnmountActions(ctx, kubeClient, *config, pod, container, slavePods)
+	err = deviceMounter.ExecutePostUnmountActions(ctx, s.kubeClient, *config, pod, container, slavePods)
 	if err != nil {
 		klog.Warningf("execute post unmount actions error: %v", err)
 		if _, ok = err.(*api.MounterError); !ok {
@@ -458,7 +452,7 @@ func (s *DeviceMounterServer) UnMountDevice(ctx context.Context, req *api.UnMoun
 		return
 	}
 	// Get the list of pods that need to be cleaned together with the uninstallation device operation.
-	gcPodKeys := deviceMounter.GetPodsToCleanup(ctx, kubeClient, pod, container, slavePods)
+	gcPodKeys := deviceMounter.GetPodsToCleanup(ctx, s.kubeClient, pod, container, slavePods)
 	_ = GarbageCollectionPods(s.kubeClient, gcPodKeys)
 
 	message := fmt.Sprintf("Successfully uninstalled %s devices", deviceType)
