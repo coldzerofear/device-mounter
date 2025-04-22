@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -224,92 +225,155 @@ func KillRunningProcesses(config *Config, processes []int) error {
 	return nil
 }
 
-func GetDeviceGroupPathV1(podCGroupPath string) string {
+func GetK8sPodDeviceCGroupFullPath(podCGroupPath string) string {
 	return filepath.Join("/sys/fs/cgroup/devices", podCGroupPath)
 }
 
-// TODO cgroupv2 没有devices层级
-func GetGroupPathV2(podCGroupPath string) string {
+func GetK8sPodCGroupFullPath(podCGroupPath string) string {
 	return filepath.Join("/sys/fs/cgroup", podCGroupPath)
 }
 
-func GetK8sPodCGroupPath(pod *v1.Pod, container *api.Container, oldVersion bool) (string, error) {
-	var (
-		found       bool
-		runtimeName string
-		containerId string
-	)
-	for _, status := range pod.Status.ContainerStatuses {
-		if status.Name == container.Name {
-			runtimeName, containerId = parseRuntime(status.ContainerID)
-			found = true
-			break
+func GetContainerStatus(pod *v1.Pod, containerName string) (*v1.ContainerStatus, bool) {
+	for i, status := range pod.Status.ContainerStatuses {
+		if status.Name == containerName {
+			return &pod.Status.ContainerStatuses[i], true
 		}
 	}
-	if !found {
-		return "", fmt.Errorf("Failed to obtain container cgroup path")
-	}
+	return nil, false
+}
+
+type CgroupName []string
+
+func NewPodCgroupName(pod *v1.Pod) CgroupName {
 	podQos := pod.Status.QOSClass
 	if len(podQos) == 0 {
 		podQos = qos.GetPodQOS(pod)
 	}
-	var cgroups []string
+	var cgroupName CgroupName
 	switch podQos {
 	case v1.PodQOSGuaranteed:
-		cgroups = []string{"kubepods"}
+		cgroupName = append(cgroupName, "kubepods")
 	case v1.PodQOSBurstable:
-		cgroups = []string{"kubepods", strings.ToLower(string(v1.PodQOSBurstable))}
+		cgroupName = append(cgroupName, "kubepods", strings.ToLower(string(v1.PodQOSBurstable)))
 	case v1.PodQOSBestEffort:
-		cgroups = []string{"kubepods", strings.ToLower(string(v1.PodQOSBestEffort))}
+		cgroupName = append(cgroupName, "kubepods", strings.ToLower(string(v1.PodQOSBestEffort)))
 	}
-	cgroups = append(cgroups, "pod"+string(pod.UID))
-
-	switch config.CurrentCGroupDriver {
-	case config.SYSTEMD:
-		return convertPath(runtimeName, containerId, cgroups, oldVersion), nil
-	case config.CGROUPFS:
-		return filepath.Join(path.Join(cgroups...), containerId), nil
-	default:
-		return "", fmt.Errorf("unknown CGroup Driver, Unable to locate cgroup directory")
-	}
+	cgroupName = append(cgroupName, "pod"+string(pod.UID))
+	return cgroupName
 }
 
-func convertPath(runtimeName, containerId string, cgroups []string, oldVersion bool) string {
-	switch runtimeName {
-	case "containerd":
-		if oldVersion {
-			return fmt.Sprintf("%s/%s-%s.scope", toSystemd(cgroups, false), SystemdPathPrefixOfRuntime(runtimeName), containerId)
-		}
-		return fmt.Sprintf("system.slice/%s.service/%s:%s:%s", runtimeName, toSystemd(cgroups, true), SystemdPathPrefixOfRuntime(runtimeName), containerId)
-	case "docker":
-		if oldVersion {
-			return fmt.Sprintf("%s/%s-%s.scope", toSystemd(cgroups, false), SystemdPathPrefixOfRuntime(runtimeName), containerId)
-		}
-		return fmt.Sprintf("%s/%s", toSystemd(cgroups, false), containerId)
-	default:
-		return fmt.Sprintf("%s/%s-%s.scope", toSystemd(cgroups, false), SystemdPathPrefixOfRuntime(runtimeName), containerId)
-	}
-}
-
-func toSystemd(cgroupName []string, newContainerd bool) string {
+// cgroupName.ToSystemd converts the internal cgroup name to a systemd name.
+// For example, the name {"kubepods", "burstable", "pod1234-abcd-5678-efgh"} becomes
+// "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod1234_abcd_5678_efgh.slice"
+// This function always expands the systemd name into the cgroupfs form. If only
+// the last part is needed, use path.Base(...) on it to discard the rest.
+func (cgroupName CgroupName) ToSystemd() string {
 	if len(cgroupName) == 0 || (len(cgroupName) == 1 && cgroupName[0] == "") {
 		return "/"
 	}
 	newparts := []string{}
 	for _, part := range cgroupName {
-		part = strings.Replace(part, "-", "_", -1)
+		part = escapeSystemdCgroupName(part)
 		newparts = append(newparts, part)
 	}
-	if newContainerd {
-		return strings.Join(newparts, "-") + ".slice"
-	} else {
-		result, err := cgroupsystemd.ExpandSlice(strings.Join(newparts, "-") + ".slice")
-		if err != nil {
-			// Should never happen...
-			panic(fmt.Errorf("error converting cgroup name [%v] to systemd format: %v", cgroupName, err))
-		}
-		return result
+	result, err := cgroupsystemd.ExpandSlice(strings.Join(newparts, "-") + ".slice")
+	if err != nil {
+		// Should never happen...
+		panic(fmt.Errorf("error converting cgroup name [%v] to systemd format: %v", cgroupName, err))
 	}
+	return result
+}
+
+func escapeSystemdCgroupName(part string) string {
+	return strings.Replace(part, "-", "_", -1)
+}
+
+func (cgroupName CgroupName) ToCgroupfs() string {
+	return "/" + path.Join(cgroupName...)
+}
+
+func GetK8sPodCGroupPath(pod *v1.Pod, container *api.Container,
+	getFullPath func(string) string) (string, error) {
+	var (
+		runtimeName string
+		containerId string
+	)
+	status, exist := GetContainerStatus(pod, container.Name)
+	if !exist {
+		return "", fmt.Errorf("failed to obtain container cgroup path")
+	}
+	runtimeName, containerId = parseRuntime(status.ContainerID)
+	cgroupName := NewPodCgroupName(pod)
+	switch config.CurrentCGroupDriver {
+	case config.SYSTEMD:
+		return convertSystemdFullPath(runtimeName, containerId, cgroupName, getFullPath)
+	case config.CGROUPFS:
+		return convertCGroupfsFullPath(runtimeName, containerId, cgroupName, getFullPath)
+	default:
+		return "", fmt.Errorf("unknown CGroup driver: %s", config.CurrentCGroupDriver)
+	}
+}
+
+func convertSystemdFullPath(runtimeName, containerId string,
+	cgroupName CgroupName, getFullPath func(string) string) (string, error) {
+	var toSystemd = func(cgroupName CgroupName) string {
+		if len(cgroupName) == 0 || (len(cgroupName) == 1 && cgroupName[0] == "") {
+			return "/"
+		}
+		var newparts []string
+		for _, part := range cgroupName {
+			part = strings.Replace(part, "-", "_", -1)
+			newparts = append(newparts, part)
+		}
+		return strings.Join(newparts, "-") + ".slice"
+	}
+	cgroupPath := fmt.Sprintf("%s/%s-%s.scope", cgroupName.ToSystemd(),
+		SystemdPathPrefixOfRuntime(runtimeName), containerId)
+	fullPath := getFullPath(cgroupPath)
+	if !PathIsNotExist(fullPath) {
+		return fullPath, nil
+	}
+	switch runtimeName {
+	case "containerd":
+		klog.Warningf("CGroup full path <%s> not exist", fullPath)
+		cgroupPath = fmt.Sprintf("system.slice/%s.service/%s:%s:%s", runtimeName,
+			toSystemd(cgroupName), SystemdPathPrefixOfRuntime(runtimeName), containerId)
+		fullPath = getFullPath(cgroupPath)
+		if !PathIsNotExist(fullPath) {
+			return fullPath, nil
+		}
+	case "docker":
+		klog.Warningf("CGroup full path <%s> not exist", fullPath)
+		cgroupPath = fmt.Sprintf("%s/%s", cgroupName.ToSystemd(), containerId)
+		fullPath = getFullPath(cgroupPath)
+		if !PathIsNotExist(fullPath) {
+			return fullPath, nil
+		}
+	default:
+	}
+	klog.Infof("Possible upgrade required to adapt container runtime <%s> CGroup driver <%s>",
+		runtimeName, "systemd")
+	return "", fmt.Errorf("container CGroup full path <%s> not exist", fullPath)
+}
+
+func convertCGroupfsFullPath(runtimeName, containerId string,
+	cgroupName CgroupName, getFullPath func(string) string) (string, error) {
+	fullPath := getFullPath(filepath.Join(cgroupName.ToCgroupfs(), containerId))
+	if !PathIsNotExist(fullPath) {
+		return fullPath, nil
+	}
+	fullPath = getFullPath(filepath.Join("system.slice", cgroupName[len(cgroupName)-1]))
+	if !PathIsNotExist(fullPath) {
+		return fullPath, nil
+	}
+	klog.Infof("Possible upgrade required to adapt container runtime <%s> CGroup driver <%s>",
+		runtimeName, "cgroupfs")
+	return "", fmt.Errorf("container CGroup full path <%s> not exist", fullPath)
+}
+
+func PathIsNotExist(fullPath string) bool {
+	_, err := os.Stat(fullPath)
+	return os.IsNotExist(err)
 }
 
 func SystemdPathPrefixOfRuntime(runtimeName string) string {

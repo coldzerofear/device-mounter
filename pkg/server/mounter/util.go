@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -363,26 +362,20 @@ func (s *DeviceMounterServer) MutationPodFunc(devType string, container *api.Con
 }
 
 func (s *DeviceMounterServer) GetCGroupPath(pod *v1.Pod, container *api.Container) (string, error) {
-	oldversion := false
-loop:
-	cgroupPath, err := util.GetK8sPodCGroupPath(pod, container, oldversion)
-	if err != nil {
-		return "", err
-	}
-	if cgroups.IsCgroup2UnifiedMode() {
-		cgroupPath = util.GetGroupPathV2(cgroupPath)
-	} else {
-		cgroupPath = util.GetDeviceGroupPathV1(cgroupPath)
-	}
-	if _, err := os.Stat(cgroupPath); os.IsNotExist(err) {
-		if !oldversion {
-			klog.Warning("cgroup path ", cgroupPath, " not found, try use old version")
-			oldversion = true
-			goto loop
+	var getFullPath func(string) string
+	switch {
+	case cgroups.IsCgroup2UnifiedMode(): // cgroupv2
+		getFullPath = util.GetK8sPodCGroupFullPath
+	case cgroups.IsCgroup2HybridMode():
+		// If the device controller does not exist, use the path of cgroupv2.
+		getFullPath = util.GetK8sPodDeviceCGroupFullPath
+		if util.PathIsNotExist("/sys/fs/cgroup/devices") {
+			getFullPath = util.GetK8sPodCGroupFullPath
 		}
-		return "", fmt.Errorf("the container cgroup path does not exist: %s", cgroupPath)
+	default: // cgroupv1
+		getFullPath = util.GetK8sPodDeviceCGroupFullPath
 	}
-	return cgroupPath, nil
+	return util.GetK8sPodCGroupPath(pod, container, getFullPath)
 }
 
 func (s *DeviceMounterServer) DeviceRuleSetFunc(cgroupPath string, r *configs.Resources) (closed func() error, rollback func() error, err error) {
@@ -394,6 +387,13 @@ func (s *DeviceMounterServer) DeviceRuleSetFunc(cgroupPath string, r *configs.Re
 	case cgroups.IsCgroup2UnifiedMode():
 		klog.V(3).Infoln("use cgroupv2 ebpf device controller")
 		closed, rollback, err = util.SetDeviceRulesByCgroupv2(cgroupPath, r)
+	case cgroups.IsCgroup2HybridMode():
+		// If the device controller does not exist, use cgroupv2.
+		if util.PathIsNotExist("/sys/fs/cgroup/devices") {
+			closed, rollback, err = util.SetDeviceRulesByCgroupv2(cgroupPath, r)
+		} else {
+			rollback, err = util.SetDeviceRulesByCgroupv1(cgroupPath, r)
+		}
 	default:
 		rollback, err = util.SetDeviceRulesByCgroupv1(cgroupPath, r)
 	}
